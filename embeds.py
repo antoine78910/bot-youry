@@ -1,14 +1,12 @@
-import discord
+"""Templates de messages — ajoute/modifie les entrées ici."""
 
-# Couleur de la barre à gauche (bleu comme sur ton exemple)
 EMBED_COLOR = 0x3498DB
 
-
-def account_setup_embed() -> discord.Embed:
-    """Message structuré type EROMIFY — modifie le texte ici."""
-    return discord.Embed(
-        title="💸 EROMIFY CLIPPING — ACCOUNT SETUP",
-        description=(
+# Chaque clé = un type de message réutilisable dans channel_config.json
+MESSAGE_TEMPLATES: dict[str, dict] = {
+    "account_setup": {
+        "title": "💸 EROMIFY CLIPPING — ACCOUNT SETUP",
+        "description": (
             "Create a brand new Instagram account.\n\n"
             "**Username:** ai + American male name\n"
             "Examples: aibynick, aimoneynick, nickaiworkflow, nickusesai, "
@@ -23,13 +21,28 @@ def account_setup_embed() -> discord.Embed:
             "https://eromify.com/\n\n"
             "*Only add the link once you have earned over 30k views on your account.*"
         ),
-        color=EMBED_COLOR,
-    )
-
-
-def bot_online_embed() -> discord.Embed:
-    return discord.Embed(
-        title="✅ Youry est en ligne",
-        description="Le bot est prêt. Utilise `!setup` pour envoyer le guide de configuration.",
-        color=EMBED_COLOR,
-    )
+        "color": EMBED_COLOR,
+    },
+    "welcome": {
+        "title": "👋 Bienvenue",
+        "description": (
+            "Bienvenue sur le serveur.\n\n"
+            "Lis les règles et présente-toi dans le salon dédié."
+        ),
+        "color": EMBED_COLOR,
+    },
+    "rules": {
+        "title": "📋 Règles",
+        "fields": [
+            {"name": "1. Respect", "value": "Sois respectueux envers tout le monde."},
+            {"name": "2. Pas de spam", "value": "Pas de pub ni de spam."},
+            {"name": "3. Contenu", "value": "Pas de contenu illégal ou NSFW."},
+        ],
+        "color": EMBED_COLOR,
+    },
+    "bot_online": {
+        "title": "✅ Youry est en ligne",
+        "description": "Messages à jour. Utilise `!refresh` pour mettre à jour ce salon.",
+        "color": EMBED_COLOR,
+    },
+}
