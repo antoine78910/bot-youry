@@ -8,6 +8,7 @@
     "content_bot": ""
   },
   "channels": {
+    "1509137923063418984": "start_here",
     "1509796706190098492": "account_setup",
     "1509827929843171420": "registration_welcome"
   }
