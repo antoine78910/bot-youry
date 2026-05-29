@@ -6,8 +6,15 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-TOKEN = os.getenv("DISCORD_TOKEN")
-CHANNEL_ID = os.getenv("DISCORD_CHANNEL_ID")
+
+def _clean_env(value: str | None) -> str | None:
+    if not value:
+        return None
+    return value.strip().strip('"').strip("'")
+
+
+TOKEN = _clean_env(os.getenv("DISCORD_TOKEN"))
+CHANNEL_ID = _clean_env(os.getenv("DISCORD_CHANNEL_ID"))
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -48,8 +55,27 @@ async def send_to_channel(ctx: commands.Context, channel_id: int, *, message: st
     await ctx.send(f"Message envoyé dans {channel.mention}.")
 
 
+def _validate_token(token: str) -> None:
+    if token.isdigit():
+        raise SystemExit(
+            "DISCORD_TOKEN ressemble à un ID d'application, pas au token du bot. "
+            "Va sur discord.com/developers → Bot → Reset Token."
+        )
+    if len(token) == 64 and all(c in "0123456789abcdef" for c in token.lower()):
+        raise SystemExit(
+            "DISCORD_TOKEN ressemble à la clé publique, pas au token du bot. "
+            "Utilise le token sous Bot → Reset Token."
+        )
+    if token.count(".") != 2:
+        raise SystemExit(
+            "DISCORD_TOKEN invalide (format attendu : xxx.yyy.zzz). "
+            "Recopie le token depuis Bot → Reset Token, sans guillemets ni espaces."
+        )
+
+
 if __name__ == "__main__":
     if not TOKEN:
-        raise SystemExit("DISCORD_TOKEN manquant. Copie .env.example vers .env et remplis ton token.")
+        raise SystemExit("DISCORD_TOKEN manquant. Définis la variable sur Railway ou dans .env.")
 
+    _validate_token(TOKEN)
     bot.run(TOKEN)
