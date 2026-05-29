@@ -5,7 +5,7 @@ import discord
 
 from channel_utils import delete_bot_messages
 from embed_utils import build_embeds_from_template
-from embeds import MESSAGE_TEMPLATES
+from embeds import MESSAGE_TEMPLATES, get_template
 
 CONFIG_PATH = Path(__file__).parent / "channel_config.json"
 
@@ -39,7 +39,7 @@ async def publish_channel(
         await special[template_name](channel, bot_user, clear_old=clear_old)
         return
 
-    template = MESSAGE_TEMPLATES.get(template_name)
+    template = get_template(template_name)
     if not template:
         raise ValueError(f"Template inconnu : {template_name}")
 

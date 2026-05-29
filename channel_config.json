@@ -1,6 +1,12 @@
 {
-  "_comment": "Associe l'ID de chaque salon au nom d'un template dans embeds.py (MESSAGE_TEMPLATES)",
+  "_comment": "channels = salon ID → template | channel_links = mentions cliquables dans start_here",
   "registration_log_channel": "1509831488244547625",
+  "channel_links": {
+    "account_setup": "1509796706190098492",
+    "apply": "1509827929843171420",
+    "warmup": "",
+    "content_bot": ""
+  },
   "channels": {
     "1509796706190098492": "account_setup",
     "1509827929843171420": "registration_welcome"
