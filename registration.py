@@ -1,28 +1,48 @@
+import json
 import os
+from pathlib import Path
 
 import discord
 
 from channel_utils import delete_bot_messages
+from embeds import EMBED_COLOR
 
 REGISTRATION_TEMPLATE = "registration_welcome"
+DEFAULT_LOG_CHANNEL_ID = 1509831488244547625
 
-WELCOME_MESSAGE = """🚀 Welcome to the **Youry** Clipping Campaign
-Click the button below to begin your registration.
-
-You'll be asked for:
-• Instagram username
-• Phone Number
-• Payout method (PayPal / Crypto / Bank Transfer)
-• Payout details
-
-Once you register, you're officially in the campaign — start clipping, posting, and earning right away."""
+CONFIG_PATH = Path(__file__).parent / "channel_config.json"
 
 
-def _log_channel_id() -> int | None:
-    raw = os.getenv("REGISTRATION_LOG_CHANNEL_ID", "").strip()
-    if raw.isdigit():
-        return int(raw)
-    return None
+def _log_channel_id() -> int:
+    env = os.getenv("REGISTRATION_LOG_CHANNEL_ID", "").strip()
+    if env.isdigit():
+        return int(env)
+
+    if CONFIG_PATH.exists():
+        with CONFIG_PATH.open(encoding="utf-8") as f:
+            data = json.load(f)
+        cfg = data.get("registration_log_channel")
+        if cfg and str(cfg).isdigit():
+            return int(cfg)
+
+    return DEFAULT_LOG_CHANNEL_ID
+
+
+def welcome_embed() -> discord.Embed:
+    return discord.Embed(
+        title="🚀 Welcome to the Youry Clipping Campaign",
+        description=(
+            "Click the button below to begin your registration.\n\n"
+            "**You'll be asked for:**\n"
+            "• Instagram username\n"
+            "• Phone Number\n"
+            "• Payout method (PayPal / Crypto / Bank Transfer)\n"
+            "• Payout details\n\n"
+            "Once you register, you're officially in the campaign — "
+            "start clipping, posting, and earning right away."
+        ),
+        color=EMBED_COLOR,
+    )
 
 
 class RegistrationModal(discord.ui.Modal, title="Youry Clipping Registration"):
@@ -54,11 +74,10 @@ class RegistrationModal(discord.ui.Modal, title="Youry Clipping Registration"):
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
         embed = discord.Embed(
-            title="📋 Nouvelle inscription — Youry Clipping",
-            color=0x9B59B6,
+            title="New register",
+            description=f"**Discord:** {interaction.user.mention} (`{interaction.user.id}`)",
+            color=EMBED_COLOR,
         )
-        embed.add_field(name="Utilisateur Discord", value=interaction.user.mention, inline=False)
-        embed.add_field(name="ID Discord", value=str(interaction.user.id), inline=True)
         embed.add_field(
             name="Instagram Username",
             value=self.instagram.value or "—",
@@ -71,17 +90,19 @@ class RegistrationModal(discord.ui.Modal, title="Youry Clipping Registration"):
             value=self.payout_details.value or "—",
             inline=False,
         )
+        embed.set_footer(text="Youry Clipping Registration")
+        embed.timestamp = discord.utils.utcnow()
 
-        log_id = _log_channel_id()
-        if log_id and interaction.client:
-            log_channel = interaction.client.get_channel(log_id)
-            if isinstance(log_channel, discord.TextChannel):
-                await log_channel.send(embed=embed)
+        log_channel = interaction.client.get_channel(_log_channel_id()) if interaction.client else None
+        if isinstance(log_channel, discord.TextChannel):
+            await log_channel.send(embed=embed)
 
-        await interaction.response.send_message(
-            "✅ **Registration complete!** You're officially in the Youry Clipping campaign.",
-            ephemeral=True,
+        confirm = discord.Embed(
+            title="✅ Registration complete",
+            description="You're officially in the **Youry** Clipping campaign.",
+            color=EMBED_COLOR,
         )
+        await interaction.response.send_message(embed=confirm, ephemeral=True)
 
 
 class RegisterView(discord.ui.View):
@@ -109,4 +130,4 @@ async def publish_registration_welcome(
 ) -> None:
     if clear_old:
         await delete_bot_messages(channel, bot_user)
-    await channel.send(WELCOME_MESSAGE, view=RegisterView())
+    await channel.send(embed=welcome_embed(), view=RegisterView())
