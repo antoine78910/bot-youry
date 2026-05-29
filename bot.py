@@ -6,7 +6,8 @@ from dotenv import load_dotenv
 
 from embed_utils import chunk_message
 from embeds import MESSAGE_TEMPLATES
-from publisher import load_channel_config, publish_template
+from publisher import load_channel_config, publish_channel
+from registration import RegisterView
 
 load_dotenv()
 
@@ -43,7 +44,7 @@ async def publish_all_channels() -> None:
             print(f"Salon {channel_id} introuvable (template: {template_name})")
             continue
         try:
-            await publish_template(channel, template_name, bot.user)
+            await publish_channel(channel, template_name, bot.user)
             print(f"Publié '{template_name}' dans #{channel.name}")
         except Exception as exc:
             print(f"Erreur salon {channel_id}: {exc}")
@@ -53,6 +54,8 @@ async def publish_all_channels() -> None:
 async def on_ready():
     print(f"Connecté en tant que {bot.user} (ID: {bot.user.id})")
     print("------")
+
+    bot.add_view(RegisterView())
 
     if AUTO_PUBLISH:
         await publish_all_channels()
@@ -79,11 +82,14 @@ async def refresh(ctx: commands.Context, template_name: str | None = None):
         )
         return
 
-    if name not in MESSAGE_TEMPLATES:
-        await ctx.send(f"Template `{name}` introuvable dans embeds.py")
+    from publisher import _load_special_publishers
+
+    known = set(MESSAGE_TEMPLATES) | set(_load_special_publishers())
+    if name not in known:
+        await ctx.send(f"Template `{name}` introuvable.")
         return
 
-    await publish_template(ctx.channel, name, bot.user)
+    await publish_channel(ctx.channel, name, bot.user)
     try:
         await ctx.message.delete()
     except discord.HTTPException:
@@ -105,10 +111,23 @@ async def say(ctx: commands.Context, *, message: str):
         await ctx.send(part)
 
 
+@bot.command(name="postregister")
+@commands.has_permissions(administrator=True)
+async def post_register(ctx: commands.Context):
+    """Publie le message d'inscription + bouton Register dans ce salon."""
+    from registration import REGISTRATION_TEMPLATE
+
+    await publish_channel(ctx.channel, REGISTRATION_TEMPLATE, bot.user)
+    await ctx.message.delete()
+
+
 @bot.command(name="templates")
 async def list_templates(ctx: commands.Context):
     """Liste les templates disponibles."""
-    names = "\n".join(f"• `{name}`" for name in MESSAGE_TEMPLATES)
+    from publisher import _load_special_publishers
+
+    all_names = sorted(set(MESSAGE_TEMPLATES) | set(_load_special_publishers()))
+    names = "\n".join(f"• `{name}`" for name in all_names)
     mapping = load_channel_config()
     channels = "\n".join(
         f"• <#{cid}> → `{tpl}`" for cid, tpl in mapping.items()
