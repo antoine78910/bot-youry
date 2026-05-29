@@ -116,7 +116,7 @@ async def list_templates(ctx: commands.Context):
 
     embed = discord.Embed(
         title="Templates & salons",
-        color=0x3498DB,
+        color=0x9B59B6,
     )
     embed.add_field(name="Templates", value=names, inline=False)
     embed.add_field(name="Salons configurés", value=channels, inline=False)

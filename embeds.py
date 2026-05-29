@@ -1,6 +1,6 @@
 """Templates de messages — ajoute/modifie les entrées ici."""
 
-EMBED_COLOR = 0x3498DB
+EMBED_COLOR = 0x9B59B6
 
 # Chaque clé = un type de message réutilisable dans channel_config.json
 MESSAGE_TEMPLATES: dict[str, dict] = {

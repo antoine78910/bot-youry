@@ -37,7 +37,7 @@ def chunk_message(text: str) -> list[str]:
 
 def build_embeds_from_template(template: dict) -> list[discord.Embed]:
     """Construit 1 à N embeds (descriptions et champs découpés si besoin)."""
-    color = template.get("color", 0x3498DB)
+    color = template.get("color", 0x9B59B6)
     title = template.get("title")
     footer = template.get("footer")
     fields = template.get("fields", [])
