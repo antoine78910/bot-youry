@@ -5,10 +5,12 @@
     "account_setup": "1509796706190098492",
     "apply": "1509827929843171420",
     "warmup": "",
-    "content_bot": ""
+    "content_bot": "",
+    "payout_submission": "1509828068670177300"
   },
   "channels": {
     "1509137923063418984": "start_here",
+    "1509828068670177300": "payouts",
     "1509796706190098492": "account_setup",
     "1509827929843171420": "registration_welcome"
   }

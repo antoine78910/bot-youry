@@ -12,6 +12,7 @@ CHANNEL_LABELS = {
     "apply": "#🚀-apply",
     "warmup": "#🔥-warmup",
     "content_bot": "#🎬-content-bot",
+    "payout_submission": "#💳-payout-submission",
 }
 
 
@@ -50,10 +51,28 @@ def start_here_description() -> str:
     )
 
 
+def payouts_description() -> str:
+    payout_ch = channel_mention("payout_submission")
+
+    return (
+        "$300 per 1M views\n"
+        "Minimum views for payout: 100k views\n"
+        "Minimum T1 audience for payout: 20%\n\n"
+        "Payouts are made by Bank Transfer, Paypal, or Cryptocurrency.\n"
+        "Payouts are made bi-weekly.\n\n"
+        f"Request payout? Go to {payout_ch}"
+    )
+
+
 MESSAGE_TEMPLATES: dict[str, dict] = {
     "start_here": {
         "title": "💸 YOURY CLIPPING — START HERE",
         "description": "",  # rempli dynamiquement via get_template()
+        "color": EMBED_COLOR,
+    },
+    "payouts": {
+        "title": "💸 YOURY CLIPPING — PAYOUTS",
+        "description": "",
         "color": EMBED_COLOR,
     },
     "account_setup": {
@@ -108,4 +127,6 @@ def get_template(name: str) -> dict | None:
     result = dict(template)
     if name == "start_here":
         result["description"] = start_here_description()
+    elif name == "payouts":
+        result["description"] = payouts_description()
     return result
