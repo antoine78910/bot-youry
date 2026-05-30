@@ -7,6 +7,7 @@ import discord
 
 from channel_utils import delete_bot_messages
 from embeds import EMBED_COLOR
+from notify_roles import notify_role_id, notify_role_mention
 
 PAYOUT_SUBMISSION_TEMPLATE = "payout_submission_welcome"
 CONFIG_PATH = Path(__file__).parent / "channel_config.json"
@@ -104,6 +105,17 @@ async def _ticket_overwrites(
         role = guild.get_role(role_id)
         if role:
             overwrites[role] = discord.PermissionOverwrite(
+                view_channel=True,
+                send_messages=True,
+                read_message_history=True,
+                manage_messages=True,
+            )
+
+    notify_id = notify_role_id()
+    if notify_id and notify_id not in _staff_role_ids():
+        notify_role = guild.get_role(notify_id)
+        if notify_role:
+            overwrites[notify_role] = discord.PermissionOverwrite(
                 view_channel=True,
                 send_messages=True,
                 read_message_history=True,
@@ -265,7 +277,9 @@ class PayoutSubmitView(discord.ui.View):
             return
 
         ticket_id = str(uuid.uuid4())
+        ping = notify_role_mention()
         await ticket_channel.send(
+            content=ping or None,
             embed=ticket_embed(interaction.user, ticket_id),
             view=PayoutTicketView(),
         )

@@ -6,6 +6,7 @@ import discord
 
 from channel_utils import delete_bot_messages
 from embeds import EMBED_COLOR
+from notify_roles import notify_role_mention
 
 REGISTRATION_TEMPLATE = "registration_welcome"
 DEFAULT_LOG_CHANNEL_ID = 1509831488244547625
@@ -95,7 +96,8 @@ class RegistrationModal(discord.ui.Modal, title="Youry Clipping Registration"):
 
         log_channel = interaction.client.get_channel(_log_channel_id()) if interaction.client else None
         if isinstance(log_channel, discord.TextChannel):
-            await log_channel.send(embed=embed)
+            ping = notify_role_mention()
+            await log_channel.send(content=ping or None, embed=embed)
 
         confirm = discord.Embed(
             title="✅ Registration complete",

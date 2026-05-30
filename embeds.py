@@ -12,6 +12,7 @@ CHANNEL_LABELS = {
     "apply": "#🚀-apply",
     "warmup": "#🔥-warmup",
     "content_bot": "#🎬-content-bot",
+    "dm_automation": "#📩-dm-automation",
     "payout_submission": "#💳-payout-submission",
 }
 
@@ -163,6 +164,27 @@ MESSAGE_TEMPLATES: dict[str, dict] = {
             "• 10–15 min warm-up\n"
             "• Post 1-3 reels with minimum 2 hours in between posts\n\n"
             "That's it. Stick to this and your account will start pushing views fast."
+        ),
+        "color": EMBED_COLOR,
+    },
+    "dm_automation": {
+        "title": "💸 YOURY CLIPPING — DM AUTOMATION",
+        "description": (
+            "DM automation is required to be set up on every video for payout.\n\n"
+            "**What is DM automation?**\n\n"
+            "When people comment a keyword in comments on an Instagram post, they "
+            "automatically receive a link in their DMs.\n\n"
+            "In order to use DM automation, you must set your account to a professional "
+            "account. Go to settings on Instagram, search account type, change to "
+            "business account.\n\n"
+            "Go to Superprofile, sign up for free, only use the free plan.\n\n"
+            "On every post you must use DM automation to send out links.\n\n"
+            "For keywords, select AI or select any words.\n"
+            "Caption: Comment \"AI\" for the full guide\n\n"
+            "**The \"Open Link\" button** will send out this link:\n"
+            "https://youry.io\n\n"
+            "**The \"Workflow\" button** will send out this link:\n"
+            "https://www.youry.io/workflow/public/community%3Ae7db5a09-667d-4cda-913c-68904f581780"
         ),
         "color": EMBED_COLOR,
     },
