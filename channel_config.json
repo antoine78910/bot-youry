@@ -2,16 +2,18 @@
   "_comment": "channels = salon ID → template | channel_links = mentions cliquables dans start_here",
   "registration_log_channel": "1509831488244547625",
   "channel_links": {
-    "account_setup": "1509796706190098492",
+    "account_setup": "1509469427249446993",
     "apply": "1509827929843171420",
-    "warmup": "",
+    "warmup": "1509469526805315650",
     "content_bot": "",
-    "payout_submission": "1509828068670177300"
+    "payout_submission": "1509828628567822396"
   },
   "channels": {
     "1509137923063418984": "start_here",
     "1509828068670177300": "payouts",
-    "1509796706190098492": "account_setup",
-    "1509827929843171420": "registration_welcome"
+    "1509469427249446993": "account_setup",
+    "1509469526805315650": "warmup",
+    "1509827929843171420": "registration_welcome",
+    "1509828628567822396": "payout_submission_welcome"
   }
 }

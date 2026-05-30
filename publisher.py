@@ -21,9 +21,16 @@ def load_channel_config() -> dict[str, str]:
 
 
 def _load_special_publishers() -> dict:
+    from payout_submission import (
+        PAYOUT_SUBMISSION_TEMPLATE,
+        publish_payout_submission_welcome,
+    )
     from registration import REGISTRATION_TEMPLATE, publish_registration_welcome
 
-    return {REGISTRATION_TEMPLATE: publish_registration_welcome}
+    return {
+        REGISTRATION_TEMPLATE: publish_registration_welcome,
+        PAYOUT_SUBMISSION_TEMPLATE: publish_payout_submission_welcome,
+    }
 
 
 async def publish_channel(

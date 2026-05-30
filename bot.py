@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from embed_utils import chunk_message
 from embeds import MESSAGE_TEMPLATES
 from publisher import load_channel_config, publish_channel
+from payout_submission import PayoutSubmitView, PayoutTicketView
 from registration import RegisterView
 
 load_dotenv()
@@ -56,6 +57,8 @@ async def on_ready():
     print("------")
 
     bot.add_view(RegisterView())
+    bot.add_view(PayoutSubmitView())
+    bot.add_view(PayoutTicketView())
 
     if AUTO_PUBLISH:
         await publish_all_channels()
@@ -118,6 +121,16 @@ async def post_register(ctx: commands.Context):
     from registration import REGISTRATION_TEMPLATE
 
     await publish_channel(ctx.channel, REGISTRATION_TEMPLATE, bot.user)
+    await ctx.message.delete()
+
+
+@bot.command(name="postpayout")
+@commands.has_permissions(administrator=True)
+async def post_payout(ctx: commands.Context):
+    """Publie le message payout + bouton Submit Payout dans ce salon."""
+    from payout_submission import PAYOUT_SUBMISSION_TEMPLATE
+
+    await publish_channel(ctx.channel, PAYOUT_SUBMISSION_TEMPLATE, bot.user)
     await ctx.message.delete()
 
 
