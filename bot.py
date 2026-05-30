@@ -11,7 +11,7 @@ from content_generator import ContentGeneratorView
 from payout_submission import PayoutSubmitView, PayoutTicketView
 from registration import RegisterView
 
-load_dotenv()
+load_dotenv(override=True)
 
 
 def _clean_env(value: str | None) -> str | None:

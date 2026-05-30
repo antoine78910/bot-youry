@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 
 from publisher import load_channel_config, publish_channel
 
-load_dotenv()
+load_dotenv(override=True)
 
 TOKEN = os.getenv("DISCORD_TOKEN", "").strip().strip('"').strip("'")
 

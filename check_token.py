@@ -6,7 +6,7 @@ import sys
 import discord
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=True)
 
 
 def _clean_token() -> str:
