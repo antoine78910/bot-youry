@@ -86,10 +86,10 @@ MESSAGE_TEMPLATES: dict[str, dict] = {
             "**Profile Picture:**\n"
             "https://drive.google.com/drive/folders/1JBwgJrwDsonIXMvyC_LXXJqInpHchuID?usp=sharing\n\n"
             "**Bio:**\n"
-            "Miami | Make money with AI influencers 💻\n"
-            "Start generating now with youry.ai\n\n"
+            "Helping you scale your brand with AI👀\n"
+            "Start generating now with @youry.ai\n\n"
             "**Bio link:**\n"
-            "https://youry.com/\n\n"
+            "https://youry.io/\n\n"
             "Only add the link once you have earned over 30k views on your account.\n\n"
             "**Post frequency:**\n\n"
             "Post 1-3 times a day. Once you unlock trials reels, post 1-3 times a day there too.\n\n"
@@ -100,10 +100,13 @@ MESSAGE_TEMPLATES: dict[str, dict] = {
             "ET time is American Eastern Time.\n\n"
             "If you are based in Asia, post in your morning. The earlier the better.\n\n"
             "**✉️ Caption & Hashtags**\n\n"
-            "The first line of the caption must always be:\n\n"
-            "Comment \"AI\" for the free guide\n\n"
-            "Hashtags you can use (use always 3-5): #business, #entrepreneur #success "
-            "#money #fyp #ai #onlinemoney #entrepreneurship #claude"
+            "Use one of these opening lines (first line of the caption):\n\n"
+            "**Option 1 — UGC**\n"
+            "Comment \"UGC\" to try → send the tool link\n\n"
+            "Hashtags (use 3–5): #socialmediamarketing #marketingtool #aitoolsforbusiness "
+            "#moneymindset #growyourbusiness #marketingtips #adcreative #marketingstrategy\n\n"
+            "**Option 2 — Workflow**\n"
+            "Comment \"Workflow\" to get the full workflow → send the public workflow link"
         ),
         "color": EMBED_COLOR,
     },
@@ -182,7 +185,10 @@ MESSAGE_TEMPLATES: dict[str, dict] = {
     },
     "bot_online": {
         "title": "✅ Youry est en ligne",
-        "description": "Messages à jour. Utilise `!refresh` pour mettre à jour ce salon.",
+        "description": (
+            "Bot online. Use `!refresh` in a channel to update its message "
+            "(does not run automatically on restart)."
+        ),
         "color": EMBED_COLOR,
     },
 }

@@ -5,7 +5,7 @@
     "account_setup": "1509469427249446993",
     "apply": "1509827929843171420",
     "warmup": "1509469526805315650",
-    "content_bot": "",
+    "content_bot": "1509469626805315650",
     "payout_submission": "1509828628567822396"
   },
   "channels": {
@@ -14,6 +14,8 @@
     "1509469427249446993": "account_setup",
     "1509469526805315650": "warmup",
     "1509827929843171420": "registration_welcome",
-    "1509828628567822396": "payout_submission_welcome"
+    "1509828628567822396": "payout_submission_welcome",
+    "1509828191437459597": "payout_proofs",
+    "1509469626805315650": "content_generator_welcome"
   }
 }

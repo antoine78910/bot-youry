@@ -21,6 +21,11 @@ def load_channel_config() -> dict[str, str]:
 
 
 def _load_special_publishers() -> dict:
+    from content_generator import (
+        CONTENT_GENERATOR_TEMPLATE,
+        publish_content_generator_welcome,
+    )
+    from payout_proofs import PAYOUT_PROOFS_TEMPLATE, publish_payout_proofs
     from payout_submission import (
         PAYOUT_SUBMISSION_TEMPLATE,
         publish_payout_submission_welcome,
@@ -30,6 +35,8 @@ def _load_special_publishers() -> dict:
     return {
         REGISTRATION_TEMPLATE: publish_registration_welcome,
         PAYOUT_SUBMISSION_TEMPLATE: publish_payout_submission_welcome,
+        PAYOUT_PROOFS_TEMPLATE: publish_payout_proofs,
+        CONTENT_GENERATOR_TEMPLATE: publish_content_generator_welcome,
     }
 
 

@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from embed_utils import chunk_message
 from embeds import MESSAGE_TEMPLATES
 from publisher import load_channel_config, publish_channel
+from content_generator import ContentGeneratorView
 from payout_submission import PayoutSubmitView, PayoutTicketView
 from registration import RegisterView
 
@@ -20,7 +21,7 @@ def _clean_env(value: str | None) -> str | None:
 
 
 TOKEN = _clean_env(os.getenv("DISCORD_TOKEN"))
-AUTO_PUBLISH = _clean_env(os.getenv("AUTO_PUBLISH_ON_START", "true")).lower() in (
+AUTO_PUBLISH = _clean_env(os.getenv("AUTO_PUBLISH_ON_START", "false")).lower() in (
     "1",
     "true",
     "yes",
@@ -59,6 +60,7 @@ async def on_ready():
     bot.add_view(RegisterView())
     bot.add_view(PayoutSubmitView())
     bot.add_view(PayoutTicketView())
+    bot.add_view(ContentGeneratorView())
 
     if AUTO_PUBLISH:
         await publish_all_channels()
@@ -131,6 +133,26 @@ async def post_payout(ctx: commands.Context):
     from payout_submission import PAYOUT_SUBMISSION_TEMPLATE
 
     await publish_channel(ctx.channel, PAYOUT_SUBMISSION_TEMPLATE, bot.user)
+    await ctx.message.delete()
+
+
+@bot.command(name="postproofs")
+@commands.has_permissions(administrator=True)
+async def post_proofs(ctx: commands.Context):
+    """Publie les screenshots de preuves de payout dans ce salon."""
+    from payout_proofs import PAYOUT_PROOFS_TEMPLATE
+
+    await publish_channel(ctx.channel, PAYOUT_PROOFS_TEMPLATE, bot.user)
+    await ctx.message.delete()
+
+
+@bot.command(name="postcontent")
+@commands.has_permissions(administrator=True)
+async def post_content(ctx: commands.Context):
+    """Publie le panneau Content Generator dans ce salon."""
+    from content_generator import CONTENT_GENERATOR_TEMPLATE
+
+    await publish_channel(ctx.channel, CONTENT_GENERATOR_TEMPLATE, bot.user)
     await ctx.message.delete()
 
 
