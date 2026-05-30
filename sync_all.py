@@ -4,6 +4,13 @@ import os
 import sys
 import traceback
 
+# Windows console: avoid UnicodeEncodeError on channel names with emojis
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 import discord
 from dotenv import load_dotenv
 
@@ -42,11 +49,12 @@ async def main() -> None:
                     continue
 
                 ok = await publish_channel(channel, template_name, client.user, force=force)
+                ch_label = getattr(channel, "name", None) or str(channel.id)
                 if ok:
-                    print(f"OK   {label} (#{channel.name})")
+                    print(f"OK   {label} (channel {channel.id} / {ch_label})")
                     updated += 1
                 else:
-                    print(f"SKIP {label} (#{channel.name})")
+                    print(f"SKIP {label} (channel {channel.id} / {ch_label})")
                     skipped += 1
             except Exception:
                 print(f"FAIL {label}:")
