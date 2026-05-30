@@ -9,6 +9,7 @@ from channel_utils import delete_bot_messages
 
 CONTENT_GENERATOR_TEMPLATE = "content_generator_welcome"
 CONTENT_COLOR = 0x57F287  # green accent like reference panel
+PROGRESS_COLOR = 0x5865F2  # blurple progress embed like reference bot
 CONFIG_PATH = Path(__file__).parent / "channel_config.json"
 
 
@@ -34,6 +35,23 @@ def _sanitize_username(name: str) -> str:
 
 def thread_name_for(user: discord.User) -> str:
     return f"clips-{_sanitize_username(user.name)}"
+
+
+def progress_embed(current: int, total: int) -> discord.Embed:
+    return discord.Embed(
+        description=f"⏳ **Generating video {current}/{total}...**",
+        color=PROGRESS_COLOR,
+    )
+
+
+def progress_done_embed(total: int, thread: discord.Thread) -> discord.Embed:
+    return discord.Embed(
+        description=(
+            f"✅ **All {total} video{'s' if total != 1 else ''} ready** — "
+            f"check {thread.mention}."
+        ),
+        color=CONTENT_COLOR,
+    )
 
 
 def panel_embed() -> discord.Embed:
@@ -163,9 +181,11 @@ async def _generate_clips_for_user(
     thread: discord.Thread,
     *,
     count: int,
+    progress_message: discord.WebhookMessage,
 ) -> tuple[int, list[str]]:
     from clip_assembler import (
         ClipAssemblyError,
+        ClipRecipe,
         assemble_clip,
         assets_status,
         recipe_summary,
@@ -184,41 +204,73 @@ async def _generate_clips_for_user(
             ],
         )
 
-    progress = await thread.send(
-        f"🎬 Generating **{count}** clip(s)… Usually ~30 seconds each.",
-    )
-    created = 0
+    pending: list[tuple[Path, ClipRecipe]] = []
     errors: list[str] = []
 
     for index in range(count):
         try:
+            await progress_message.edit(embed=progress_embed(index + 1, count))
+        except discord.HTTPException:
+            pass
+
+        try:
             output_path, recipe = await asyncio.to_thread(
                 assemble_clip,
-                seed=hash((member.id, index, progress.id)) & 0xFFFFFFFF,
+                seed=hash((member.id, index, progress_message.id)) & 0xFFFFFFFF,
             )
-            await post_clip_to_thread(parent_channel, member, output_path)
-            await thread.send(
-                f"**Clip {index + 1}/{count}** — {recipe_summary(recipe)}",
-                suppress_embeds=True,
-            )
-            output_path.unlink(missing_ok=True)
-            created += 1
-            if count == 1:
-                await thread.send("✅ Clip ready — check the video above.")
-            elif index + 1 == count and created == count:
-                await thread.send(f"✅ All **{created}** clips are ready.")
+            pending.append((output_path, recipe))
         except ClipAssemblyError as exc:
             errors.append(f"Clip {index + 1} failed: {exc}")
         except discord.HTTPException as exc:
-            errors.append(f"Could not upload clip {index + 1}: {exc}")
+            errors.append(f"Could not prepare clip {index + 1}: {exc}")
+
+    created = 0
+    if pending:
+        try:
+            await progress_message.edit(
+                embed=discord.Embed(
+                    description="⏳ **Uploading videos to your thread...**",
+                    color=PROGRESS_COLOR,
+                )
+            )
+        except discord.HTTPException:
+            pass
+
+        for index, (output_path, recipe) in enumerate(pending, start=1):
+            try:
+                await post_clip_to_thread(parent_channel, member, output_path)
+                await thread.send(
+                    f"**Clip {index}/{len(pending)}** — {recipe_summary(recipe)}",
+                    suppress_embeds=True,
+                )
+                created += 1
+            except discord.HTTPException as exc:
+                errors.append(f"Could not upload clip {index}: {exc}")
+            finally:
+                output_path.unlink(missing_ok=True)
+
+        if created == len(pending) and created == count:
+            await thread.send(
+                f"✅ All **{created}** clip{'s' if created != 1 else ''} are ready."
+            )
+        elif created == 1:
+            await thread.send("✅ Clip ready — check the video above.")
+        elif created > 1:
+            await thread.send(f"✅ **{created}** clips are ready.")
 
     if count > 1 and 0 < created < count:
         errors.insert(0, f"Only **{created}/{count}** clips were created.")
 
-    try:
-        await progress.delete()
-    except discord.HTTPException:
-        pass
+    if created > 0:
+        try:
+            await progress_message.edit(embed=progress_done_embed(created, thread))
+        except discord.HTTPException:
+            pass
+    elif errors:
+        try:
+            await progress_message.delete()
+        except discord.HTTPException:
+            pass
 
     return created, errors
 
@@ -273,10 +325,10 @@ async def _handle_clip_request(
         return
 
     count = max(1, min(5, count))
-    await interaction.followup.send(
-        f"🎬 Generating **{count}** clip(s) in {thread.mention}. "
-        "You'll get a ping when each video is ready (~30 seconds each).",
+    progress_message = await interaction.followup.send(
+        embed=progress_embed(1, count),
         ephemeral=True,
+        wait=True,
     )
 
     created, errors = await _generate_clips_for_user(
@@ -284,6 +336,7 @@ async def _handle_clip_request(
         interaction.user,
         thread,
         count=count,
+        progress_message=progress_message,
     )
 
     if errors:
