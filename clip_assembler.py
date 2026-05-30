@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import json
+import os
 import random
+import re
 import shutil
 import subprocess
 import uuid
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 
 CLIPS_ROOT = Path(__file__).parent / "assets" / "clips"
@@ -46,8 +49,84 @@ class ClipAssemblyError(Exception):
     pass
 
 
+@lru_cache(maxsize=1)
+def resolve_ffmpeg_bin() -> str | None:
+    """Find ffmpeg.exe even when it is not on PATH (WinGet, FFMPEG_PATH, bundled)."""
+    try:
+        from dotenv import load_dotenv
+
+        load_dotenv(override=True)
+    except ImportError:
+        pass
+
+    env_path = os.getenv("FFMPEG_PATH", "").strip().strip('"').strip("'")
+    if env_path:
+        candidate = Path(env_path)
+        if candidate.is_file():
+            return str(candidate)
+        nested = candidate / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")
+        if nested.is_file():
+            return str(nested)
+        from_path = shutil.which(env_path)
+        if from_path:
+            return from_path
+
+    from_path = shutil.which("ffmpeg")
+    if from_path:
+        return from_path
+
+    if os.name == "nt":
+        local = os.environ.get("LOCALAPPDATA", "")
+        winget_root = Path(local) / "Microsoft" / "WinGet" / "Packages"
+        if winget_root.is_dir():
+            for exe in winget_root.glob("Gyan.FFmpeg*/**/bin/ffmpeg.exe"):
+                if exe.is_file():
+                    return str(exe)
+
+        for fixed in (
+            Path(r"C:\ffmpeg\bin\ffmpeg.exe"),
+            Path(r"C:\Program Files\ffmpeg\bin\ffmpeg.exe"),
+        ):
+            if fixed.is_file():
+                return str(fixed)
+
+    try:
+        import imageio_ffmpeg
+
+        bundled = imageio_ffmpeg.get_ffmpeg_exe()
+        if bundled and Path(bundled).is_file():
+            return bundled
+    except ImportError:
+        pass
+
+    return None
+
+
+def resolve_ffprobe_bin() -> str | None:
+    ffmpeg_bin = resolve_ffmpeg_bin()
+    if ffmpeg_bin:
+        probe = Path(ffmpeg_bin).with_name(
+            "ffprobe.exe" if os.name == "nt" else "ffprobe"
+        )
+        if probe.is_file():
+            return str(probe)
+
+    from_path = shutil.which("ffprobe")
+    return from_path
+
+
 def ffmpeg_available() -> bool:
-    return shutil.which("ffmpeg") is not None
+    return resolve_ffmpeg_bin() is not None
+
+
+def _require_ffmpeg() -> str:
+    binary = resolve_ffmpeg_bin()
+    if not binary:
+        raise ClipAssemblyError(
+            "FFmpeg not found. Install FFmpeg, add it to PATH, or set "
+            "FFMPEG_PATH in .env to the full path of ffmpeg.exe."
+        )
+    return binary
 
 
 def _list_files(folder: Path, extensions: set[str]) -> list[Path]:
@@ -115,7 +194,7 @@ MAX_UPLOAD_BYTES = 24 * 1024 * 1024
 
 
 def _run_ffmpeg(args: list[str], *, timeout: int = 600) -> None:
-    cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", *args]
+    cmd = [_require_ffmpeg(), "-hide_banner", "-loglevel", "error", "-y", *args]
     try:
         subprocess.run(cmd, check=True, timeout=timeout, capture_output=True)
     except subprocess.CalledProcessError as exc:
@@ -176,7 +255,8 @@ def assemble_clip(
   """
     if not ffmpeg_available():
         raise ClipAssemblyError(
-            "FFmpeg is not installed. Install it and add ffmpeg to your PATH."
+            "FFmpeg not found. Install FFmpeg, add it to PATH, or set "
+            "FFMPEG_PATH in .env to the full path of ffmpeg.exe."
         )
 
     rng = random.Random(seed)
@@ -308,24 +388,46 @@ def _apply_variations_and_audio(recipe: ClipRecipe, source: Path, dest: Path) ->
     )
 
 
-def _finalize_trim(recipe: ClipRecipe, source: Path, dest: Path) -> None:
-    """Mini end cut — shave a few frames off the tail."""
-    probe = subprocess.run(
-        [
-            "ffprobe",
-            "-v",
-            "error",
-            "-show_entries",
-            "format=duration",
-            "-of",
-            "default=noprint_wrappers=1:nokey=1",
-            str(source),
-        ],
+def _probe_duration(source: Path) -> float:
+    ffprobe = resolve_ffprobe_bin()
+    if ffprobe:
+        probe = subprocess.run(
+            [
+                ffprobe,
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                str(source),
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return float(probe.stdout.strip())
+
+    ffmpeg_bin = _require_ffmpeg()
+    proc = subprocess.run(
+        [ffmpeg_bin, "-hide_banner", "-i", str(source), "-f", "null", "-"],
         capture_output=True,
         text=True,
-        check=True,
+        check=False,
     )
-    duration = float(probe.stdout.strip())
+    match = re.search(
+        r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)",
+        proc.stderr,
+    )
+    if not match:
+        raise ClipAssemblyError("Could not read video duration.")
+    hours, minutes, seconds = match.groups()
+    return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+
+
+def _finalize_trim(recipe: ClipRecipe, source: Path, dest: Path) -> None:
+    """Mini end cut — shave a few frames off the tail."""
+    duration = _probe_duration(source)
     end = max(0.5, duration - recipe.end_trim_sec)
 
     _run_ffmpeg(
@@ -360,8 +462,10 @@ def recipe_summary(recipe: ClipRecipe) -> str:
 
 
 def assets_status() -> dict:
+    ffmpeg_bin = resolve_ffmpeg_bin()
     return {
-        "ffmpeg": ffmpeg_available(),
+        "ffmpeg": ffmpeg_bin is not None,
+        "ffmpeg_path": ffmpeg_bin or "",
         "hooks": len(_list_files(HOOKS_DIR, VIDEO_EXT)),
         "bodies": len(_list_files(BODY_DIR, VIDEO_EXT)),
         "music": len(_list_files(MUSIC_DIR, AUDIO_EXT)),
