@@ -1,3 +1,4 @@
+import asyncio
 import json
 import re
 from pathlib import Path
@@ -38,7 +39,12 @@ def thread_name_for(user: discord.User) -> str:
 def panel_embed() -> discord.Embed:
     return discord.Embed(
         title="🎬 Content Generator",
-        description="Click a button below to generate content.",
+        description=(
+            "Click a button below to generate a unique clip.\n\n"
+            "**Generate Content** — 1 video\n"
+            "**Batch Generate** — 3 videos (different hooks, body, music & effects)\n\n"
+            "Each export gets random color, scale, rotation, text position & end cut."
+        ),
         color=CONTENT_COLOR,
     )
 
@@ -50,9 +56,10 @@ def thread_welcome_embed(user: discord.User, mode: str) -> discord.Embed:
         description=(
             f"Hey {user.mention} — welcome to your private clips thread.\n\n"
             f"You opened this via **{mode_label}**.\n\n"
-            "Clip generation is **coming soon**. When it's live, your videos will "
-            "be posted here as:\n"
-            f"{user.mention} 🎬 + your clip file."
+            "Your generated clips will appear here as:\n"
+            f"{user.mention} 🎬 + video file.\n\n"
+            "Place assets in `assets/clips/` on the bot server "
+            "(see `assets/clips/README.md`)."
         ),
         color=CONTENT_COLOR,
     )
@@ -150,6 +157,67 @@ async def post_clip_to_thread(
     return await thread.send(content, file=await video.to_file())
 
 
+async def _generate_clips_for_user(
+    parent_channel: discord.TextChannel,
+    member: discord.Member,
+    thread: discord.Thread,
+    *,
+    count: int,
+) -> tuple[int, str | None]:
+    from clip_assembler import (
+        ClipAssemblyError,
+        assemble_clip,
+        assets_status,
+        recipe_summary,
+    )
+
+    status = assets_status()
+    if not status["ffmpeg"]:
+        return 0, "FFmpeg is not installed on the bot machine."
+    if status["hooks"] < 1 or status["bodies"] < 1 or status["music"] < 1:
+        return (
+            0,
+            "Missing clip assets. Add files to `assets/clips/hooks`, `body`, and `music`.",
+        )
+
+    progress = await thread.send(
+        f"🎬 Generating **{count}** clip(s)… This can take 1–3 min each.",
+    )
+    created = 0
+    last_error: str | None = None
+
+    for index in range(count):
+        try:
+            output_path, recipe = await asyncio.to_thread(
+                assemble_clip,
+                seed=hash((member.id, index, progress.id)) & 0xFFFFFFFF,
+            )
+            await post_clip_to_thread(parent_channel, member, output_path)
+            await thread.send(
+                f"**Clip {index + 1}/{count}** — {recipe_summary(recipe)}",
+                suppress_embeds=True,
+            )
+            output_path.unlink(missing_ok=True)
+            created += 1
+            if count == 1:
+                await thread.send(f"✅ Clip ready — check the video above.")
+            elif index + 1 == count:
+                await thread.send(f"✅ All **{created}** clips are ready.")
+        except ClipAssemblyError as exc:
+            last_error = str(exc)
+            await thread.send(f"❌ Clip {index + 1} failed: {exc}")
+        except discord.HTTPException as exc:
+            last_error = str(exc)
+            await thread.send(f"❌ Could not upload clip {index + 1}: {exc}")
+
+    try:
+        await progress.delete()
+    except discord.HTTPException:
+        pass
+
+    return created, last_error
+
+
 async def _handle_clip_request(interaction: discord.Interaction, mode: str) -> None:
     if not isinstance(interaction.channel, discord.TextChannel):
         await interaction.response.send_message(
@@ -180,16 +248,24 @@ async def _handle_clip_request(interaction: discord.Interaction, mode: str) -> N
         )
         return
 
-    mode_hint = (
-        "Batch generation is not available yet."
-        if mode == "batch"
-        else "Clip generation is not available yet."
-    )
+    from clip_assembler import load_batch_size
+
+    count = load_batch_size() if mode == "batch" else 1
     await interaction.followup.send(
-        f"✅ Your clips thread is ready: {thread.mention}\n\n"
-        f"_{mode_hint} Your videos will be posted in that thread when ready._",
+        f"🎬 Generating **{count}** clip(s) in {thread.mention}. "
+        "You'll get a ping when each video is ready (1–3 min each).",
         ephemeral=True,
     )
+
+    created, error = await _generate_clips_for_user(
+        interaction.channel,
+        interaction.user,
+        thread,
+        count=count,
+    )
+
+    if created == 0 and error:
+        await thread.send(f"❌ Generation failed: {error}")
 
 
 class ContentGeneratorView(discord.ui.View):

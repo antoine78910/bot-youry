@@ -2,6 +2,7 @@
   "_comment": "channels = salon ID → template | channel_links = mentions cliquables dans start_here",
   "registration_log_channel": "1509831488244547625",
   "notify_role_id": "1509475252953153627",
+  "clip_batch_size": 3,
   "channel_links": {
     "account_setup": "1509469427249446993",
     "apply": "1509827929843171420",

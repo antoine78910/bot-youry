@@ -40,6 +40,7 @@ def main() -> int:
                 payout_submission_panel_fingerprint()
                 print(f"OK   {label} (payout submission panel)")
             elif template_name == "content_generator_welcome":
+                from clip_assembler import assets_status
                 from content_generator import (
                     content_generator_panel_fingerprint,
                     panel_embed,
@@ -47,7 +48,16 @@ def main() -> int:
 
                 panel_embed()
                 content_generator_panel_fingerprint()
-                print(f"OK   {label} (content generator panel)")
+                st = assets_status()
+                clip_note = (
+                    f"clips assets hooks={st['hooks']} body={st['bodies']} "
+                    f"music={st['music']} ffmpeg={st['ffmpeg']}"
+                )
+                if not st["ffmpeg"]:
+                    errors.append(f"{label}: FFmpeg not on PATH")
+                elif st["hooks"] < 1 or st["bodies"] < 1 or st["music"] < 1:
+                    errors.append(f"{label}: missing files in assets/clips/")
+                print(f"OK   {label} (content generator — {clip_note})")
             else:
                 template = get_template(template_name)
                 if not template:
