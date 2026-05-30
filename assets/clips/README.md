@@ -30,7 +30,7 @@ assets/clips/
 |------------|----------------|------|
 | `hooks/`   | `.mp4`, `.mov` | Vertical 9:16 preferred (1080×1920). 3–8 seconds. |
 | `body/`    | `.mp4`, `.mov` | Main content; can be 30–90s. |
-| `music/`   | `.mp3`, `.m4a`, `.wav` | Bot mixes at ~18% volume under your body audio. |
+| `music/`   | `.mp3`, `.m4a`, `.wav` | Mixed at ~42% volume under your body audio. Hook segments are always silent. |
 | `hooks_text/` | `.png` (transparent) or `.mp4` | Shown on the **first ~2.5s**; position randomized. |
 
 ## How assembly works
@@ -42,7 +42,7 @@ assets/clips/
    - Scale: 100% → up to 105%, then center-crop to 1080×1920
    - Rotation: ±0.5°
    - **Mini cut:** trims 0.08–0.25s off the end
-   - Text overlay at a **random position** (top/center/bottom band)
+   - Text overlay **top-center** for the first ~2.5s
 
 ## Requirements
 
@@ -53,4 +53,4 @@ assets/clips/
 ## Discord
 
 - **Generate Content** → 1 clip in your private `clips-username` thread  
-- **Batch Generate** → 3 clips (different random combos)
+- **Batch Generate** → modal, 1–5 clips (different random combos)

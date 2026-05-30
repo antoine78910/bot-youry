@@ -42,8 +42,8 @@ def panel_embed() -> discord.Embed:
         description=(
             "Click a button below to generate a unique clip.\n\n"
             "**Generate Content** — 1 video\n"
-            "**Batch Generate** — 3 videos (different hooks, body, music & effects)\n\n"
-            "Each export gets random color, scale, rotation, text position & end cut."
+            "**Batch Generate** — up to 5 videos (different hooks, body, music & effects)\n\n"
+            "Each export gets random color, scale, rotation & end cut. Text hook stays top-center."
         ),
         color=CONTENT_COLOR,
     )
@@ -163,7 +163,7 @@ async def _generate_clips_for_user(
     thread: discord.Thread,
     *,
     count: int,
-) -> tuple[int, str | None]:
+) -> tuple[int, list[str]]:
     from clip_assembler import (
         ClipAssemblyError,
         assemble_clip,
@@ -173,20 +173,22 @@ async def _generate_clips_for_user(
 
     status = assets_status()
     if not status["ffmpeg"]:
-        return 0, "FFmpeg is not installed on the bot machine."
+        return 0, ["FFmpeg is not installed on the bot machine."]
     if status["hooks"] < 1 or status["bodies"] < 1 or status["music"] < 1:
         return (
             0,
-            "Missing clip assets. Add files to `assets/clips/hooks`, `body`, and `music` "
-            f"on the bot machine (checked: `{status.get('clips_root', '')}` — "
-            f"hooks={status['hooks']}, body={status['bodies']}, music={status['music']}).",
+            [
+                "Missing clip assets. Add files to `assets/clips/hooks`, `body`, and `music` "
+                f"on the bot machine (checked: `{status.get('clips_root', '')}` — "
+                f"hooks={status['hooks']}, body={status['bodies']}, music={status['music']})."
+            ],
         )
 
     progress = await thread.send(
-        f"🎬 Generating **{count}** clip(s)… This can take 1–3 min each.",
+        f"🎬 Generating **{count}** clip(s)… Usually ~30 seconds each.",
     )
     created = 0
-    last_error: str | None = None
+    errors: list[str] = []
 
     for index in range(count):
         try:
@@ -202,25 +204,45 @@ async def _generate_clips_for_user(
             output_path.unlink(missing_ok=True)
             created += 1
             if count == 1:
-                await thread.send(f"✅ Clip ready — check the video above.")
-            elif index + 1 == count:
+                await thread.send("✅ Clip ready — check the video above.")
+            elif index + 1 == count and created == count:
                 await thread.send(f"✅ All **{created}** clips are ready.")
         except ClipAssemblyError as exc:
-            last_error = str(exc)
-            await thread.send(f"❌ Clip {index + 1} failed: {exc}")
+            errors.append(f"Clip {index + 1} failed: {exc}")
         except discord.HTTPException as exc:
-            last_error = str(exc)
-            await thread.send(f"❌ Could not upload clip {index + 1}: {exc}")
+            errors.append(f"Could not upload clip {index + 1}: {exc}")
+
+    if count > 1 and 0 < created < count:
+        errors.insert(0, f"Only **{created}/{count}** clips were created.")
 
     try:
         await progress.delete()
     except discord.HTTPException:
         pass
 
-    return created, last_error
+    return created, errors
 
 
-async def _handle_clip_request(interaction: discord.Interaction, mode: str) -> None:
+async def _send_ephemeral_errors(
+    interaction: discord.Interaction,
+    errors: list[str],
+) -> None:
+    """Keep errors ephemeral so they can be dismissed and the thread stays clean."""
+    if not errors:
+        return
+    body = "\n".join(f"• {line}" for line in errors)
+    await interaction.followup.send(
+        f"❌ **Generation failed**\n{body}",
+        ephemeral=True,
+    )
+
+
+async def _handle_clip_request(
+    interaction: discord.Interaction,
+    *,
+    mode: str,
+    count: int = 1,
+) -> None:
     if not isinstance(interaction.channel, discord.TextChannel):
         await interaction.response.send_message(
             "This panel only works in a text channel.",
@@ -250,24 +272,52 @@ async def _handle_clip_request(interaction: discord.Interaction, mode: str) -> N
         )
         return
 
-    from clip_assembler import load_batch_size
-
-    count = load_batch_size() if mode == "batch" else 1
+    count = max(1, min(5, count))
     await interaction.followup.send(
         f"🎬 Generating **{count}** clip(s) in {thread.mention}. "
-        "You'll get a ping when each video is ready (1–3 min each).",
+        "You'll get a ping when each video is ready (~30 seconds each).",
         ephemeral=True,
     )
 
-    created, error = await _generate_clips_for_user(
+    created, errors = await _generate_clips_for_user(
         interaction.channel,
         interaction.user,
         thread,
         count=count,
     )
 
-    if created == 0 and error:
-        await thread.send(f"❌ Generation failed: {error}")
+    if errors:
+        await _send_ephemeral_errors(interaction, errors)
+
+
+class BatchGenerateModal(discord.ui.Modal, title="Batch Generate"):
+    video_count = discord.ui.TextInput(
+        label="How many videos? (max 5)",
+        placeholder="1",
+        default="1",
+        required=True,
+        min_length=1,
+        max_length=1,
+    )
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        raw = self.video_count.value.strip()
+        if not raw.isdigit():
+            await interaction.response.send_message(
+                "Enter a whole number between 1 and 5.",
+                ephemeral=True,
+            )
+            return
+
+        count = int(raw)
+        if count < 1 or count > 5:
+            await interaction.response.send_message(
+                "Enter a whole number between 1 and 5.",
+                ephemeral=True,
+            )
+            return
+
+        await _handle_clip_request(interaction, mode="batch", count=count)
 
 
 class ContentGeneratorView(discord.ui.View):
@@ -285,7 +335,7 @@ class ContentGeneratorView(discord.ui.View):
         interaction: discord.Interaction,
         button: discord.ui.Button,
     ) -> None:
-        await _handle_clip_request(interaction, mode="single")
+        await _handle_clip_request(interaction, mode="single", count=1)
 
     @discord.ui.button(
         label="Batch Generate",
@@ -298,7 +348,7 @@ class ContentGeneratorView(discord.ui.View):
         interaction: discord.Interaction,
         button: discord.ui.Button,
     ) -> None:
-        await _handle_clip_request(interaction, mode="batch")
+        await interaction.response.send_modal(BatchGenerateModal())
 
 
 def content_generator_panel_fingerprint() -> str:

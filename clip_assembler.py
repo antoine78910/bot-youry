@@ -60,6 +60,10 @@ TEXT_EXT = {".png", ".mp4", ".mov", ".webm"}
 OUTPUT_WIDTH = 1080
 OUTPUT_HEIGHT = 1920
 OUTPUT_FPS = 30
+MUSIC_VOLUME = 0.42
+ENCODE_PRESET = "veryfast"
+ENCODE_CRF = "22"
+TEXT_OVERLAY_SEC = 2.5
 
 
 @dataclass
@@ -211,7 +215,6 @@ def _random_recipe(rng: random.Random) -> ClipRecipe:
         )
 
     text_hook, text_category = _pick_text_hook(rng)
-    positions = ["top", "upper", "center", "lower", "bottom"]
 
     return ClipRecipe(
         hook=rng.choice(hooks),
@@ -225,7 +228,7 @@ def _random_recipe(rng: random.Random) -> ClipRecipe:
         brightness=rng.uniform(-0.04, 0.04),
         contrast=rng.uniform(0.94, 1.06),
         end_trim_sec=rng.uniform(0.08, 0.25),
-        text_position=rng.choice(positions),
+        text_position="top",
     )
 
 
@@ -256,7 +259,7 @@ def _ensure_upload_size(path: Path) -> Path:
             "-c:v",
             "libx264",
             "-preset",
-            "fast",
+            ENCODE_PRESET,
             "-crf",
             "28",
             "-c:a",
@@ -272,7 +275,7 @@ def _ensure_upload_size(path: Path) -> Path:
     return path
 
 
-def _overlay_xy(position: str, margin: int = 48) -> tuple[str, str]:
+def _overlay_xy(position: str, margin: int = 64) -> tuple[str, str]:
     """Return ffmpeg overlay expressions for x and y."""
     mapping = {
         "top": (f"(main_w-overlay_w)/2", str(margin)),
@@ -281,7 +284,7 @@ def _overlay_xy(position: str, margin: int = 48) -> tuple[str, str]:
         "lower": (f"(main_w-overlay_w)/2", f"main_h*0.62"),
         "bottom": (f"(main_w-overlay_w)/2", f"main_h-overlay_h-{margin}"),
     }
-    return mapping.get(position, mapping["center"])
+    return mapping.get(position, mapping["top"])
 
 
 def assemble_clip(
@@ -307,68 +310,40 @@ def assemble_clip(
     else:
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    temp_concat = output_dir() / f"_concat_{uuid.uuid4().hex}.mp4"
-    temp_video = output_dir() / f"_video_{uuid.uuid4().hex}.mp4"
-
     try:
-        _concat_hook_body(recipe, temp_concat)
-        _apply_variations_and_audio(recipe, temp_concat, temp_video)
-        _finalize_trim(recipe, temp_video, output_path)
+        _render_clip(recipe, output_path)
         output_path = _ensure_upload_size(output_path)
-    finally:
-        temp_concat.unlink(missing_ok=True)
-        temp_video.unlink(missing_ok=True)
+    except ClipAssemblyError:
+        output_path.unlink(missing_ok=True)
+        raise
 
     return output_path, recipe
 
 
-def _concat_hook_body(recipe: ClipRecipe, dest: Path) -> None:
-    """Normalize hook + body to 1080x1920 @ 30fps and concatenate."""
-    scale_crop = (
+def _scale_crop_filter() -> str:
+    return (
         f"fps={OUTPUT_FPS},"
         f"scale={OUTPUT_WIDTH}:{OUTPUT_HEIGHT}:force_original_aspect_ratio=increase,"
         f"crop={OUTPUT_WIDTH}:{OUTPUT_HEIGHT},"
         "setsar=1"
     )
-    filter_complex = (
-        f"[0:v]{scale_crop}[v0];"
-        f"[1:v]{scale_crop}[v1];"
-        f"[0:a]aresample=44100,aformat=channel_layouts=stereo[a0];"
-        f"[1:a]aresample=44100,aformat=channel_layouts=stereo[a1];"
-        f"[v0][a0][v1][a1]concat=n=2:v=1:a=1[v][a]"
-    )
-    _run_ffmpeg(
-        [
-            "-i",
-            str(recipe.hook),
-            "-i",
-            str(recipe.body),
-            "-filter_complex",
-            filter_complex,
-            "-map",
-            "[v]",
-            "-map",
-            "[a]",
-            "-c:v",
-            "libx264",
-            "-preset",
-            "fast",
-            "-crf",
-            "20",
-            "-c:a",
-            "aac",
-            "-b:a",
-            "192k",
-            str(dest),
-        ]
-    )
 
 
-def _apply_variations_and_audio(recipe: ClipRecipe, source: Path, dest: Path) -> None:
+def _render_clip(recipe: ClipRecipe, dest: Path) -> None:
+    """
+    Single-pass render: hook (silent) + body + music + text overlay + variations.
+    Faster than the old 3-pass pipeline (~15–30s depending on clip length).
+    """
+    hook_dur = _probe_duration(recipe.hook)
+    body_dur = _probe_duration(recipe.body)
+    total_dur = max(0.5, hook_dur + body_dur - recipe.end_trim_sec)
+
+    scale_crop = _scale_crop_filter()
     rot_rad = recipe.rotation_deg * 3.14159265 / 180.0
     ox, oy = _overlay_xy(recipe.text_position)
+    enable = f"lt(t,{TEXT_OVERLAY_SEC})"
 
-    video_chain = (
+    video_var = (
         f"eq=saturation={recipe.saturation}:brightness={recipe.brightness}:"
         f"contrast={recipe.contrast},"
         f"rotate={rot_rad}:fillcolor=black@0:ow=iw:oh=ih,"
@@ -376,30 +351,47 @@ def _apply_variations_and_audio(recipe: ClipRecipe, source: Path, dest: Path) ->
         f"crop={OUTPUT_WIDTH}:{OUTPUT_HEIGHT}"
     )
 
-    inputs = ["-i", str(source), "-i", str(recipe.music)]
-    filter_parts = [f"[0:v]{video_chain}[vbase]"]
+    inputs = ["-i", str(recipe.hook), "-i", str(recipe.body), "-i", str(recipe.music)]
+    filter_parts = [
+        f"[0:v]{scale_crop}[v0]",
+        f"[1:v]{scale_crop}[v1]",
+        f"[v0][v1]concat=n=2:v=1:a=0[vconcat]",
+        f"anullsrc=r=44100:cl=stereo,atrim=duration={hook_dur:.3f}[silence]",
+        (
+            f"[1:a]aresample=44100,aformat=channel_layouts=stereo,"
+            f"apad=whole_dur={body_dur:.3f},atrim=duration={body_dur:.3f}[bodya]"
+        ),
+        f"[silence][bodya]concat=n=2:v=0:a=1[maina]",
+        f"[vconcat]{video_var}[vbase]",
+    ]
 
     if recipe.text_hook and recipe.text_hook.suffix.lower() == ".png":
         inputs.extend(["-i", str(recipe.text_hook)])
         filter_parts.append(
-            f"[vbase][2:v]overlay=x={ox}:y={oy}:enable='lt(t,2.5)'[vout]"
+            f"[vbase][3:v]overlay=x={ox}:y={oy}:enable='{enable}'[vout]"
         )
         vout = "[vout]"
     elif recipe.text_hook and recipe.text_hook.suffix.lower() in {".mp4", ".mov", ".webm"}:
         inputs.extend(["-i", str(recipe.text_hook)])
         filter_parts.append(
-            f"[2:v]scale={OUTPUT_WIDTH}:-1[txt];"
-            f"[vbase][txt]overlay=x={ox}:y={oy}:enable='lt(t,2.5)'[vout]"
+            f"[3:v]scale={OUTPUT_WIDTH}:-1[txt];"
+            f"[vbase][txt]overlay=x={ox}:y={oy}:enable='{enable}'[vout]"
         )
         vout = "[vout]"
     else:
         filter_parts.append("[vbase]copy[vout]")
         vout = "[vout]"
 
-    filter_parts.append(
-        f"[0:a]volume=1.0[va];"
-        f"[1:a]volume=0.18[vm];"
-        f"[va][vm]amix=inputs=2:duration=first:dropout_transition=2[aout]"
+    filter_parts.extend(
+        [
+            f"[maina]volume=1.0[va]",
+            (
+                f"[2:a]aresample=44100,aformat=channel_layouts=stereo,"
+                f"volume={MUSIC_VOLUME},aloop=loop=-1:size=2e+09,"
+                f"atrim=duration={total_dur:.3f}[vm]"
+            ),
+            f"[va][vm]amix=inputs=2:duration=first:dropout_transition=2[aout]",
+        ]
     )
 
     _run_ffmpeg(
@@ -411,17 +403,22 @@ def _apply_variations_and_audio(recipe: ClipRecipe, source: Path, dest: Path) ->
             vout,
             "-map",
             "[aout]",
+            "-t",
+            f"{total_dur:.3f}",
             "-c:v",
             "libx264",
             "-preset",
-            "fast",
+            ENCODE_PRESET,
             "-crf",
-            "20",
+            ENCODE_CRF,
+            "-threads",
+            "0",
             "-c:a",
             "aac",
             "-b:a",
             "192k",
-            "-shortest",
+            "-movflags",
+            "+faststart",
             str(dest),
         ]
     )
@@ -462,32 +459,6 @@ def _probe_duration(source: Path) -> float:
         raise ClipAssemblyError("Could not read video duration.")
     hours, minutes, seconds = match.groups()
     return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
-
-
-def _finalize_trim(recipe: ClipRecipe, source: Path, dest: Path) -> None:
-    """Mini end cut — shave a few frames off the tail."""
-    duration = _probe_duration(source)
-    end = max(0.5, duration - recipe.end_trim_sec)
-
-    _run_ffmpeg(
-        [
-            "-i",
-            str(source),
-            "-t",
-            f"{end:.3f}",
-            "-c:v",
-            "libx264",
-            "-preset",
-            "fast",
-            "-crf",
-            "20",
-            "-c:a",
-            "aac",
-            "-b:a",
-            "192k",
-            str(dest),
-        ]
-    )
 
 
 def recipe_summary(recipe: ClipRecipe) -> str:
