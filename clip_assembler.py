@@ -14,11 +14,44 @@ from functools import lru_cache
 from pathlib import Path
 
 CLIPS_ROOT = Path(__file__).parent / "assets" / "clips"
-HOOKS_DIR = CLIPS_ROOT / "hooks"
-HOOKS_TEXT_DIR = CLIPS_ROOT / "hooks_text"
-BODY_DIR = CLIPS_ROOT / "body"
-MUSIC_DIR = CLIPS_ROOT / "music"
-OUTPUT_DIR = CLIPS_ROOT / "output"
+
+
+@lru_cache(maxsize=1)
+def clips_root() -> Path:
+    """Root folder for hook/body/music assets (override with CLIPS_ASSETS_DIR)."""
+    try:
+        from dotenv import load_dotenv
+
+        load_dotenv(override=True)
+    except ImportError:
+        pass
+
+    override = os.getenv("CLIPS_ASSETS_DIR", "").strip().strip('"').strip("'")
+    if override:
+        path = Path(override)
+        if path.is_dir():
+            return path.resolve()
+    return CLIPS_ROOT.resolve()
+
+
+def hooks_dir() -> Path:
+    return clips_root() / "hooks"
+
+
+def hooks_text_dir() -> Path:
+    return clips_root() / "hooks_text"
+
+
+def body_dir() -> Path:
+    return clips_root() / "body"
+
+
+def music_dir() -> Path:
+    return clips_root() / "music"
+
+
+def output_dir() -> Path:
+    return clips_root() / "output"
 
 VIDEO_EXT = {".mp4", ".mov", ".mkv", ".webm"}
 AUDIO_EXT = {".mp3", ".m4a", ".wav", ".aac"}
@@ -140,12 +173,12 @@ def _list_files(folder: Path, extensions: set[str]) -> list[Path]:
 
 
 def _pick_text_hook(rng: random.Random) -> tuple[Path | None, str | None]:
-    if not HOOKS_TEXT_DIR.is_dir():
+    if not hooks_text_dir().is_dir():
         return None, None
 
     categories = [
         d
-        for d in HOOKS_TEXT_DIR.iterdir()
+        for d in hooks_text_dir().iterdir()
         if d.is_dir() and _list_files(d, TEXT_EXT | VIDEO_EXT)
     ]
     if categories:
@@ -153,23 +186,29 @@ def _pick_text_hook(rng: random.Random) -> tuple[Path | None, str | None]:
         chosen = rng.choice(_list_files(category, TEXT_EXT | VIDEO_EXT))
         return chosen, category.name
 
-    root_files = _list_files(HOOKS_TEXT_DIR, TEXT_EXT | VIDEO_EXT)
+    root_files = _list_files(hooks_text_dir(), TEXT_EXT | VIDEO_EXT)
     if root_files:
         return rng.choice(root_files), "default"
     return None, None
 
 
 def _random_recipe(rng: random.Random) -> ClipRecipe:
-    hooks = _list_files(HOOKS_DIR, VIDEO_EXT)
-    bodies = _list_files(BODY_DIR, VIDEO_EXT)
-    tracks = _list_files(MUSIC_DIR, AUDIO_EXT)
+    hooks = _list_files(hooks_dir(), VIDEO_EXT)
+    bodies = _list_files(body_dir(), VIDEO_EXT)
+    tracks = _list_files(music_dir(), AUDIO_EXT)
 
     if not hooks:
-        raise ClipAssemblyError(f"No videos in {HOOKS_DIR} — add at least one hook.")
+        raise ClipAssemblyError(
+            f"No videos in {hooks_dir()} — add at least one hook."
+        )
     if not bodies:
-        raise ClipAssemblyError(f"No videos in {BODY_DIR} — add at least one body clip.")
+        raise ClipAssemblyError(
+            f"No videos in {body_dir()} — add at least one body clip."
+        )
     if not tracks:
-        raise ClipAssemblyError(f"No audio in {MUSIC_DIR} — add at least one music track.")
+        raise ClipAssemblyError(
+            f"No audio in {music_dir()} — add at least one music track."
+        )
 
     text_hook, text_category = _pick_text_hook(rng)
     positions = ["top", "upper", "center", "lower", "bottom"]
@@ -262,14 +301,14 @@ def assemble_clip(
     rng = random.Random(seed)
     recipe = _random_recipe(rng)
 
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    output_dir().mkdir(parents=True, exist_ok=True)
     if output_path is None:
-        output_path = OUTPUT_DIR / f"clip_{uuid.uuid4().hex}.mp4"
+        output_path = output_dir() / f"clip_{uuid.uuid4().hex}.mp4"
     else:
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    temp_concat = OUTPUT_DIR / f"_concat_{uuid.uuid4().hex}.mp4"
-    temp_video = OUTPUT_DIR / f"_video_{uuid.uuid4().hex}.mp4"
+    temp_concat = output_dir() / f"_concat_{uuid.uuid4().hex}.mp4"
+    temp_video = output_dir() / f"_video_{uuid.uuid4().hex}.mp4"
 
     try:
         _concat_hook_body(recipe, temp_concat)
@@ -466,15 +505,16 @@ def assets_status() -> dict:
     return {
         "ffmpeg": ffmpeg_bin is not None,
         "ffmpeg_path": ffmpeg_bin or "",
-        "hooks": len(_list_files(HOOKS_DIR, VIDEO_EXT)),
-        "bodies": len(_list_files(BODY_DIR, VIDEO_EXT)),
-        "music": len(_list_files(MUSIC_DIR, AUDIO_EXT)),
+        "clips_root": str(clips_root()),
+        "hooks": len(_list_files(hooks_dir(), VIDEO_EXT)),
+        "bodies": len(_list_files(body_dir(), VIDEO_EXT)),
+        "music": len(_list_files(music_dir(), AUDIO_EXT)),
         "text_hooks": sum(
-            len(_list_files(HOOKS_TEXT_DIR / d, TEXT_EXT | VIDEO_EXT))
-            for d in HOOKS_TEXT_DIR.iterdir()
+            len(_list_files(hooks_text_dir() / d, TEXT_EXT | VIDEO_EXT))
+            for d in hooks_text_dir().iterdir()
             if d.is_dir()
         )
-        if HOOKS_TEXT_DIR.is_dir()
+        if hooks_text_dir().is_dir()
         else 0,
     }
 

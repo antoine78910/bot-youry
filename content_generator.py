@@ -177,7 +177,9 @@ async def _generate_clips_for_user(
     if status["hooks"] < 1 or status["bodies"] < 1 or status["music"] < 1:
         return (
             0,
-            "Missing clip assets. Add files to `assets/clips/hooks`, `body`, and `music`.",
+            "Missing clip assets. Add files to `assets/clips/hooks`, `body`, and `music` "
+            f"on the bot machine (checked: `{status.get('clips_root', '')}` — "
+            f"hooks={status['hooks']}, body={status['bodies']}, music={status['music']}).",
         )
 
     progress = await thread.send(

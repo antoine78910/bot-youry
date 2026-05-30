@@ -1,14 +1,6 @@
 .env
 publish_state.json
 assets/clips/output/
-assets/clips/hooks/*
-!assets/clips/hooks/.gitkeep
-assets/clips/body/*
-!assets/clips/body/.gitkeep
-assets/clips/music/*
-!assets/clips/music/.gitkeep
-assets/clips/hooks_text/**/*
-!assets/clips/hooks_text/**/.gitkeep
 !assets/clips/README.md
 __pycache__/
 *.pyc
