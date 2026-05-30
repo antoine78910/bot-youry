@@ -180,24 +180,27 @@ async def post_clip_to_thread(
 
 
 async def _generate_clips_for_user(
+    interaction: discord.Interaction,
     parent_channel: discord.TextChannel,
     member: discord.Member,
     thread: discord.Thread,
     *,
     count: int,
     progress_message: discord.WebhookMessage,
-) -> tuple[int, list[str]]:
+) -> tuple[int, list[str], list[str]]:
     from clip_assembler import (
         ClipAssemblyError,
         ClipRecipe,
         assemble_clip,
         assets_status,
+        cleanup_clip_artifacts,
         recipe_summary,
     )
+    from clip_delivery import deliver_clip_to_thread
 
     status = assets_status()
     if not status["ffmpeg"]:
-        return 0, ["FFmpeg is not installed on the bot machine."]
+        return 0, ["FFmpeg is not installed on the bot machine."], []
     if status["hooks"] < 1 or status["bodies"] < 1 or status["music"] < 1:
         return (
             0,
@@ -206,6 +209,7 @@ async def _generate_clips_for_user(
                 f"on the bot machine (checked: `{status.get('clips_root', '')}` — "
                 f"hooks={status['hooks']}, body={status['bodies']}, music={status['music']})."
             ],
+            [],
         )
 
     pending: list[tuple[Path, ClipRecipe]] = []
@@ -229,6 +233,7 @@ async def _generate_clips_for_user(
             errors.append(f"Could not prepare clip {index + 1}: {exc}")
 
     created = 0
+    external_links: list[str] = []
     if pending:
         try:
             await progress_message.edit(
@@ -238,17 +243,31 @@ async def _generate_clips_for_user(
             pass
 
         for index, (output_path, recipe) in enumerate(pending, start=1):
+            clip_label = f"Clip {index}/{len(pending)}"
             try:
-                await post_clip_to_thread(parent_channel, member, output_path)
-                await thread.send(
-                    f"**Clip {index}/{len(pending)}** — {recipe_summary(recipe)}",
-                    suppress_embeds=True,
+                mode, url = await deliver_clip_to_thread(
+                    thread,
+                    member,
+                    output_path,
+                    clip_label=clip_label,
+                    recipe_text=recipe_summary(recipe),
                 )
                 created += 1
+                if mode == "external" and url:
+                    external_links.append(f"**{clip_label}:** {url}")
+            except ClipAssemblyError as exc:
+                errors.append(f"{clip_label} failed: {exc}")
             except discord.HTTPException as exc:
-                errors.append(f"Could not upload clip {index}: {exc}")
+                errors.append(f"Could not upload {clip_label.lower()}: {exc}")
             finally:
-                output_path.unlink(missing_ok=True)
+                cleanup_clip_artifacts(output_path)
+
+        if external_links:
+            await thread.send(
+                "🔗 **External downloads** (Discord file limit):\n"
+                + "\n".join(external_links),
+                suppress_embeds=True,
+            )
 
         if created == len(pending) and created == count:
             await thread.send(
@@ -260,7 +279,21 @@ async def _generate_clips_for_user(
             await thread.send(f"✅ **{created}** clips are ready.")
 
     if count > 1 and 0 < created < count:
-        errors.insert(0, f"Only **{created}/{count}** clips were uploaded.")
+        errors.insert(0, f"Only **{created}/{count}** clips were delivered.")
+
+    if external_links and not errors:
+        try:
+            await progress_message.edit(
+                embed=discord.Embed(
+                    description=(
+                        f"✅ **Batch complete — {created}/{count} videos**\n"
+                        f"Some clips are external links in {thread.mention}."
+                    ),
+                    color=CONTENT_COLOR,
+                )
+            )
+        except discord.HTTPException:
+            pass
 
     if created == 0 and errors:
         try:
@@ -268,7 +301,14 @@ async def _generate_clips_for_user(
         except discord.HTTPException:
             pass
 
-    return created, errors
+    if external_links:
+        await interaction.followup.send(
+            "🔗 **External downloads** (too large for Discord):\n"
+            + "\n".join(external_links),
+            ephemeral=True,
+        )
+
+    return created, errors, external_links
 
 
 async def _send_ephemeral_errors(
@@ -327,7 +367,8 @@ async def _handle_clip_request(
         wait=True,
     )
 
-    created, errors = await _generate_clips_for_user(
+    created, errors, _external = await _generate_clips_for_user(
+        interaction,
         interaction.channel,
         interaction.user,
         thread,

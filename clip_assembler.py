@@ -232,7 +232,9 @@ def _random_recipe(rng: random.Random) -> ClipRecipe:
     )
 
 
-MAX_UPLOAD_BYTES = 24 * 1024 * 1024
+MAX_UPLOAD_BYTES = 25 * 1024 * 1024
+DISCORD_TARGET_BYTES = 8 * 1024 * 1024
+DISCORD_EMERGENCY_BYTES = 4 * 1024 * 1024
 MIN_MEDIA_BYTES = 1024
 
 _media_valid_cache: dict[tuple[str, int, int], bool] = {}
@@ -317,48 +319,77 @@ def _run_ffmpeg(args: list[str], *, timeout: int = 600) -> None:
         raise ClipAssemblyError("FFmpeg timed out.") from exc
 
 
-def _ensure_upload_size(path: Path) -> Path:
-    """Re-encode until the file fits Discord's 25 MB upload limit."""
-    if path.stat().st_size <= MAX_UPLOAD_BYTES:
+def _compress_once(
+    source: Path,
+    dest: Path,
+    *,
+    crf: str,
+    maxrate: str,
+    audio: str,
+    scale: str | None,
+) -> None:
+    args = ["-i", str(source)]
+    if scale:
+        args.extend(["-vf", f"scale={scale}"])
+    maxrate_value = maxrate.rstrip("M").rstrip("k")
+    if maxrate.endswith("M"):
+        bufsize = f"{int(float(maxrate_value) * 2)}M"
+    else:
+        bufsize = f"{int(maxrate_value) * 2}k"
+
+    args.extend(
+        [
+            "-c:v",
+            "libx264",
+            "-preset",
+            ENCODE_PRESET,
+            "-crf",
+            crf,
+            "-maxrate",
+            maxrate,
+            "-bufsize",
+            bufsize,
+            "-c:a",
+            "aac",
+            "-b:a",
+            audio,
+            "-movflags",
+            "+faststart",
+            str(dest),
+        ]
+    )
+    _run_ffmpeg(args)
+
+
+def prepare_for_discord_upload(path: Path, *, emergency: bool = False) -> Path:
+    """Compress clip for Discord (target 8 MB, emergency 4 MB)."""
+    target = DISCORD_EMERGENCY_BYTES if emergency else DISCORD_TARGET_BYTES
+    if path.stat().st_size <= target:
         return path
 
     strategies: list[dict[str, str | None]] = [
-        {"crf": "28", "audio": "128k", "scale": None, "maxrate": "5M"},
-        {"crf": "32", "audio": "96k", "scale": None, "maxrate": "3.5M"},
-        {"crf": "34", "audio": "96k", "scale": "720:1280", "maxrate": "2.5M"},
-        {"crf": "36", "audio": "64k", "scale": "540:960", "maxrate": "1.8M"},
+        {"crf": "28", "audio": "96k", "scale": None, "maxrate": "2.5M"},
+        {"crf": "30", "audio": "96k", "scale": None, "maxrate": "2M"},
+        {"crf": "32", "audio": "64k", "scale": "720:1280", "maxrate": "1.5M"},
+        {"crf": "34", "audio": "64k", "scale": "720:1280", "maxrate": "1.2M"},
+        {"crf": "36", "audio": "48k", "scale": "540:960", "maxrate": "900k"},
+        {"crf": "38", "audio": "48k", "scale": "480:854", "maxrate": "700k"},
+        {"crf": "40", "audio": "32k", "scale": "426:756", "maxrate": "500k"},
     ]
 
     source = path
     for index, strategy in enumerate(strategies):
         smaller = path.with_name(f"{path.stem}_discord_{index}.mp4")
-        args = ["-i", str(source)]
-        if strategy["scale"]:
-            args.extend(["-vf", f"scale={strategy['scale']}"])
-        args.extend(
-            [
-                "-c:v",
-                "libx264",
-                "-preset",
-                ENCODE_PRESET,
-                "-crf",
-                str(strategy["crf"]),
-                "-maxrate",
-                str(strategy["maxrate"]),
-                "-bufsize",
-                str(int(float(strategy["maxrate"].rstrip("M")) * 2)) + "M",
-                "-c:a",
-                "aac",
-                "-b:a",
-                str(strategy["audio"]),
-                "-movflags",
-                "+faststart",
-                str(smaller),
-            ]
+        _compress_once(
+            source,
+            smaller,
+            crf=str(strategy["crf"]),
+            maxrate=str(strategy["maxrate"]),
+            audio=str(strategy["audio"]),
+            scale=strategy["scale"] if strategy["scale"] else None,
         )
-        _run_ffmpeg(args)
 
-        if smaller.stat().st_size <= MAX_UPLOAD_BYTES:
+        if smaller.stat().st_size <= target:
             if source != path:
                 source.unlink(missing_ok=True)
             if smaller != path:
@@ -369,10 +400,29 @@ def _ensure_upload_size(path: Path) -> Path:
             source.unlink(missing_ok=True)
         source = smaller
 
+    if source.stat().st_size <= MAX_UPLOAD_BYTES:
+        if source != path:
+            path.unlink(missing_ok=True)
+        return source
+
     raise ClipAssemblyError(
-        f"Clip is too large for Discord upload "
-        f"({source.stat().st_size // (1024 * 1024)} MB after compression)."
+        "Clip is too large for Discord even after compression "
+        f"({source.stat().st_size // (1024 * 1024)} MB)."
     )
+
+
+def _ensure_upload_size(path: Path) -> Path:
+    """Final pass after render — always compress to the Discord target size."""
+    return prepare_for_discord_upload(path)
+
+
+def cleanup_clip_artifacts(path: Path) -> None:
+    """Remove rendered clip and any compression temp files."""
+    if not path.parent.is_dir():
+        return
+    stem = path.stem.split("_discord_")[0]
+    for candidate in path.parent.glob(f"{stem}*.mp4"):
+        candidate.unlink(missing_ok=True)
 
 
 def _overlay_xy(position: str, margin: int = 64) -> tuple[str, str]:
@@ -512,9 +562,9 @@ def _render_clip(recipe: ClipRecipe, dest: Path) -> None:
             "-crf",
             ENCODE_CRF,
             "-maxrate",
-            "5M",
+            "2.5M",
             "-bufsize",
-            "10M",
+            "5M",
             "-threads",
             "0",
             "-c:a",
