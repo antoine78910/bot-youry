@@ -197,9 +197,9 @@ def _pick_text_hook(rng: random.Random) -> tuple[Path | None, str | None]:
 
 
 def _random_recipe(rng: random.Random) -> ClipRecipe:
-    hooks = _list_files(hooks_dir(), VIDEO_EXT)
-    bodies = _list_files(body_dir(), VIDEO_EXT)
-    tracks = _list_files(music_dir(), AUDIO_EXT)
+    hooks = _list_usable_files(hooks_dir(), VIDEO_EXT)
+    bodies = _list_usable_files(body_dir(), VIDEO_EXT)
+    tracks = _list_usable_files(music_dir(), AUDIO_EXT)
 
     if not hooks:
         raise ClipAssemblyError(
@@ -233,6 +233,77 @@ def _random_recipe(rng: random.Random) -> ClipRecipe:
 
 
 MAX_UPLOAD_BYTES = 24 * 1024 * 1024
+MIN_MEDIA_BYTES = 1024
+
+_media_valid_cache: dict[tuple[str, int, int], bool] = {}
+
+
+def _is_valid_media(path: Path) -> bool:
+    """Skip empty or corrupt assets (e.g. 0-byte mp3 checked into git)."""
+    try:
+        stat = path.stat()
+    except OSError:
+        return False
+
+    if stat.st_size < MIN_MEDIA_BYTES:
+        return False
+
+    cache_key = (str(path.resolve()), stat.st_size, int(stat.st_mtime))
+    cached = _media_valid_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    ffprobe = resolve_ffprobe_bin()
+    ok = False
+    if ffprobe:
+        probe = subprocess.run(
+            [
+                ffprobe,
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                str(path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if probe.returncode == 0:
+            try:
+                ok = float(probe.stdout.strip()) > 0
+            except ValueError:
+                ok = False
+    else:
+        probe = subprocess.run(
+            [
+                _require_ffmpeg(),
+                "-hide_banner",
+                "-v",
+                "error",
+                "-i",
+                str(path),
+                "-f",
+                "null",
+                "-",
+            ],
+            capture_output=True,
+            timeout=60,
+        )
+        ok = probe.returncode == 0
+
+    _media_valid_cache[cache_key] = ok
+    return ok
+
+
+def _list_usable_files(folder: Path, extensions: set[str]) -> list[Path]:
+    return [
+        path
+        for path in _list_files(folder, extensions)
+        if _is_valid_media(path)
+    ]
 
 
 def _run_ffmpeg(args: list[str], *, timeout: int = 600) -> None:
@@ -247,32 +318,61 @@ def _run_ffmpeg(args: list[str], *, timeout: int = 600) -> None:
 
 
 def _ensure_upload_size(path: Path) -> Path:
-    """Re-encode if the file exceeds Discord's upload limit."""
+    """Re-encode until the file fits Discord's 25 MB upload limit."""
     if path.stat().st_size <= MAX_UPLOAD_BYTES:
         return path
 
-    smaller = path.with_name(f"{path.stem}_compressed.mp4")
-    _run_ffmpeg(
-        [
-            "-i",
-            str(path),
-            "-c:v",
-            "libx264",
-            "-preset",
-            ENCODE_PRESET,
-            "-crf",
-            "28",
-            "-c:a",
-            "aac",
-            "-b:a",
-            "128k",
-            str(smaller),
-        ]
+    strategies: list[dict[str, str | None]] = [
+        {"crf": "28", "audio": "128k", "scale": None, "maxrate": "5M"},
+        {"crf": "32", "audio": "96k", "scale": None, "maxrate": "3.5M"},
+        {"crf": "34", "audio": "96k", "scale": "720:1280", "maxrate": "2.5M"},
+        {"crf": "36", "audio": "64k", "scale": "540:960", "maxrate": "1.8M"},
+    ]
+
+    source = path
+    for index, strategy in enumerate(strategies):
+        smaller = path.with_name(f"{path.stem}_discord_{index}.mp4")
+        args = ["-i", str(source)]
+        if strategy["scale"]:
+            args.extend(["-vf", f"scale={strategy['scale']}"])
+        args.extend(
+            [
+                "-c:v",
+                "libx264",
+                "-preset",
+                ENCODE_PRESET,
+                "-crf",
+                str(strategy["crf"]),
+                "-maxrate",
+                str(strategy["maxrate"]),
+                "-bufsize",
+                str(int(float(strategy["maxrate"].rstrip("M")) * 2)) + "M",
+                "-c:a",
+                "aac",
+                "-b:a",
+                str(strategy["audio"]),
+                "-movflags",
+                "+faststart",
+                str(smaller),
+            ]
+        )
+        _run_ffmpeg(args)
+
+        if smaller.stat().st_size <= MAX_UPLOAD_BYTES:
+            if source != path:
+                source.unlink(missing_ok=True)
+            if smaller != path:
+                path.unlink(missing_ok=True)
+            return smaller
+
+        if source != path:
+            source.unlink(missing_ok=True)
+        source = smaller
+
+    raise ClipAssemblyError(
+        f"Clip is too large for Discord upload "
+        f"({source.stat().st_size // (1024 * 1024)} MB after compression)."
     )
-    if smaller.stat().st_size <= MAX_UPLOAD_BYTES:
-        path.unlink(missing_ok=True)
-        return smaller
-    return path
 
 
 def _overlay_xy(position: str, margin: int = 64) -> tuple[str, str]:
@@ -411,12 +511,16 @@ def _render_clip(recipe: ClipRecipe, dest: Path) -> None:
             ENCODE_PRESET,
             "-crf",
             ENCODE_CRF,
+            "-maxrate",
+            "5M",
+            "-bufsize",
+            "10M",
             "-threads",
             "0",
             "-c:a",
             "aac",
             "-b:a",
-            "192k",
+            "128k",
             "-movflags",
             "+faststart",
             str(dest),
@@ -477,9 +581,9 @@ def assets_status() -> dict:
         "ffmpeg": ffmpeg_bin is not None,
         "ffmpeg_path": ffmpeg_bin or "",
         "clips_root": str(clips_root()),
-        "hooks": len(_list_files(hooks_dir(), VIDEO_EXT)),
-        "bodies": len(_list_files(body_dir(), VIDEO_EXT)),
-        "music": len(_list_files(music_dir(), AUDIO_EXT)),
+        "hooks": len(_list_usable_files(hooks_dir(), VIDEO_EXT)),
+        "bodies": len(_list_usable_files(body_dir(), VIDEO_EXT)),
+        "music": len(_list_usable_files(music_dir(), AUDIO_EXT)),
         "text_hooks": sum(
             len(_list_files(hooks_text_dir() / d, TEXT_EXT | VIDEO_EXT))
             for d in hooks_text_dir().iterdir()
