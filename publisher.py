@@ -59,7 +59,9 @@ async def publish_channel(
     """
     fingerprint = compute_fingerprint(template_name)
 
-    if await should_skip_publish(channel, template_name, fingerprint, force=force):
+    if await should_skip_publish(
+        channel, template_name, fingerprint, bot_user, force=force
+    ):
         return False
 
     special = _load_special_publishers()

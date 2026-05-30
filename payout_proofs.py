@@ -44,14 +44,6 @@ async def publish_payout_proofs(
             f"No images in {PROOFS_DIR}. Add 01.png–12.png payout screenshots."
         )
 
-    if force:
-        await delete_bot_messages(channel, bot_user)
-        message_ids: list[int] = []
-        for image_path in images:
-            sent = await channel.send(file=discord.File(image_path))
-            message_ids.append(sent.id)
-        return message_ids
-
     from publish_sync import sync_image_messages
 
     return await sync_image_messages(channel, bot_user, images)

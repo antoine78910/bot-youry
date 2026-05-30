@@ -12,6 +12,8 @@ from embed_utils import build_embeds_from_template
 from embeds import get_template
 
 STATE_PATH = Path(__file__).parent / "publish_state.json"
+# Bump when publish/skip logic changes so all channels resync once.
+SYNC_VERSION = 3
 
 
 def _hash_payload(payload: object) -> str:
@@ -55,7 +57,7 @@ def save_channel_state(
     _save_state(state)
 
 
-def compute_fingerprint(template_name: str) -> str:
+def _raw_fingerprint(template_name: str) -> str:
     template = get_template(template_name)
     if template is not None:
         return _hash_payload(template)
@@ -83,6 +85,52 @@ def compute_fingerprint(template_name: str) -> str:
     raise ValueError(f"Unknown template for fingerprint: {template_name}")
 
 
+def compute_fingerprint(template_name: str) -> str:
+    return _hash_payload({"sync_version": SYNC_VERSION, "content": _raw_fingerprint(template_name)})
+
+
+def expected_message_count(template_name: str) -> int | None:
+    if template_name == "payout_proofs":
+        from payout_proofs import list_proof_image_paths
+
+        return len(list_proof_image_paths())
+
+    template = get_template(template_name)
+    if template is not None:
+        return len(build_embeds_from_template(template))
+
+    return 1
+
+
+def clear_publish_state(channel_id: int | str | None = None) -> None:
+    if channel_id is None:
+        if STATE_PATH.exists():
+            STATE_PATH.unlink()
+        return
+
+    state = _load_state()
+    state.pop(str(channel_id), None)
+    _save_state(state)
+
+
+async def count_bot_panel_messages(
+    channel: discord.TextChannel,
+    bot_user: discord.ClientUser,
+    template_name: str,
+) -> int:
+    count = 0
+    is_proofs = template_name == "payout_proofs"
+    async for message in channel.history(limit=100):
+        if message.author.id != bot_user.id:
+            continue
+        if is_proofs:
+            if message.attachments and not message.embeds:
+                count += 1
+        elif message.embeds or message.components:
+            count += 1
+    return count
+
+
 async def bot_messages_exist(
     channel: discord.TextChannel,
     message_ids: list[int],
@@ -103,6 +151,7 @@ async def should_skip_publish(
     channel: discord.TextChannel,
     template_name: str,
     fingerprint: str,
+    bot_user: discord.ClientUser,
     *,
     force: bool = False,
 ) -> bool:
@@ -118,7 +167,16 @@ async def should_skip_publish(
         return False
 
     message_ids = stored.get("message_ids") or []
-    return await bot_messages_exist(channel, message_ids)
+    if not await bot_messages_exist(channel, message_ids):
+        return False
+
+    expected = expected_message_count(template_name)
+    if expected is not None:
+        visible = await count_bot_panel_messages(channel, bot_user, template_name)
+        if visible < expected or len(message_ids) < expected:
+            return False
+
+    return True
 
 
 async def find_tracked_bot_messages(
@@ -195,17 +253,7 @@ async def sync_image_messages(
     bot_user: discord.ClientUser,
     image_paths: list[Path],
 ) -> list[int]:
-    existing = await find_tracked_bot_messages(channel, bot_user)
-    image_messages = [m for m in existing if m.attachments and not m.embeds]
-
-    if len(image_messages) == len(image_paths) and image_paths:
-        try:
-            for message, path in zip(image_messages, image_paths, strict=True):
-                await message.edit(attachments=[discord.File(path)])
-            return [m.id for m in image_messages]
-        except discord.HTTPException:
-            pass
-
+    """Always replace proof images (Discord attachment edits are unreliable)."""
     from channel_utils import delete_bot_messages
 
     await delete_bot_messages(channel, bot_user)

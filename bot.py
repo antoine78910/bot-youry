@@ -104,15 +104,23 @@ async def refresh(ctx: commands.Context, template_name: str | None = None):
         await ctx.send(f"Template `{name}` not found.")
         return
 
-    updated = await publish_channel(ctx.channel, name, bot.user, force=force)
+    try:
+        updated = await publish_channel(ctx.channel, name, bot.user, force=force)
+    except Exception as exc:
+        await ctx.send(f"Publish failed: {exc}", delete_after=10)
+        return
+
     try:
         await ctx.message.delete()
     except discord.HTTPException:
         pass
 
     if not updated:
-        note = await ctx.send("No changes — message already up to date.", delete_after=4)
-        return note
+        await ctx.send(
+            "No changes detected. Use `!refresh force` or `!fixchannels` (admin) to repost.",
+            delete_after=6,
+        )
+        return
 
 
 @bot.command(name="refreshall")
@@ -123,23 +131,57 @@ async def refresh_all(ctx: commands.Context):
     mapping = load_channel_config()
     updated_count = 0
     skipped_count = 0
+    errors: list[str] = []
 
     for channel_id, template_name in mapping.items():
         channel = bot.get_channel(int(channel_id))
         if channel is None:
+            errors.append(f"<#{channel_id}>: channel not found")
             continue
         try:
             if await publish_channel(channel, template_name, bot.user, force=force):
                 updated_count += 1
             else:
                 skipped_count += 1
-        except Exception:
-            pass
+        except Exception as exc:
+            errors.append(f"<#{channel_id}> (`{template_name}`): {exc}")
 
-    await ctx.send(
-        f"Done — {updated_count} updated, {skipped_count} unchanged.",
-        delete_after=6,
-    )
+    summary = f"Done — {updated_count} updated, {skipped_count} unchanged."
+    if errors:
+        summary += "\n\n**Errors:**\n" + "\n".join(errors[:8])
+    await ctx.send(summary, delete_after=15 if errors else 6)
+
+
+@bot.command(name="fixchannels")
+@commands.has_permissions(administrator=True)
+async def fix_channels(ctx: commands.Context):
+    """Clear publish cache and repost every configured channel."""
+    from publish_sync import clear_publish_state
+
+    clear_publish_state()
+    mapping = load_channel_config()
+    updated = 0
+    errors: list[str] = []
+
+    for channel_id, template_name in mapping.items():
+        channel = bot.get_channel(int(channel_id))
+        if channel is None:
+            errors.append(f"<#{channel_id}>: not found")
+            continue
+        try:
+            await publish_channel(channel, template_name, bot.user, force=True)
+            updated += 1
+        except Exception as exc:
+            errors.append(f"<#{channel_id}>: {exc}")
+
+    msg = f"Reposted **{updated}** channel(s)."
+    if errors:
+        msg += "\n" + "\n".join(errors[:8])
+    await ctx.send(msg, delete_after=12)
+    try:
+        await ctx.message.delete()
+    except discord.HTTPException:
+        pass
 
 
 @bot.command(name="say")
