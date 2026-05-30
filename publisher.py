@@ -3,11 +3,17 @@ from pathlib import Path
 
 import discord
 
-from channel_utils import delete_bot_messages
 from embed_utils import build_embeds_from_template
 from embeds import MESSAGE_TEMPLATES, get_template
+from publish_sync import (
+    compute_fingerprint,
+    save_channel_state,
+    should_skip_publish,
+    sync_embed_messages,
+)
 
 CONFIG_PATH = Path(__file__).parent / "channel_config.json"
+
 
 def load_channel_config() -> dict[str, str]:
     """Retourne {channel_id: template_name}."""
@@ -45,24 +51,30 @@ async def publish_channel(
     template_name: str,
     bot_user: discord.ClientUser,
     *,
-    clear_old: bool = True,
-) -> None:
-    """Supprime les anciens messages du bot puis publie le contenu du salon."""
+    force: bool = False,
+) -> bool:
+    """
+    Publish or update channel content.
+    Returns True if messages were sent/updated, False if skipped (unchanged).
+    """
+    fingerprint = compute_fingerprint(template_name)
+
+    if await should_skip_publish(channel, template_name, fingerprint, force=force):
+        return False
+
     special = _load_special_publishers()
     if template_name in special:
-        await special[template_name](channel, bot_user, clear_old=clear_old)
-        return
+        message_ids = await special[template_name](channel, bot_user, force=force)
+    else:
+        template = get_template(template_name)
+        if not template:
+            raise ValueError(f"Template inconnu : {template_name}")
 
-    template = get_template(template_name)
-    if not template:
-        raise ValueError(f"Template inconnu : {template_name}")
+        embeds = build_embeds_from_template(template)
+        message_ids = await sync_embed_messages(channel, bot_user, embeds)
 
-    if clear_old:
-        await delete_bot_messages(channel, bot_user)
-
-    embeds = build_embeds_from_template(template)
-    for i in range(0, len(embeds), 10):
-        await channel.send(embeds=embeds[i : i + 10])
+    save_channel_state(channel.id, template_name, fingerprint, message_ids)
+    return True
 
 
 async def publish_template(
@@ -70,7 +82,7 @@ async def publish_template(
     template_name: str,
     bot_user: discord.ClientUser,
     *,
-    clear_old: bool = True,
-) -> None:
+    force: bool = False,
+) -> bool:
     """Alias pour compatibilité."""
-    await publish_channel(channel, template_name, bot_user, clear_old=clear_old)
+    return await publish_channel(channel, template_name, bot_user, force=force)

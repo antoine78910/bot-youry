@@ -276,12 +276,30 @@ class PayoutSubmitView(discord.ui.View):
         )
 
 
+def payout_submission_panel_fingerprint() -> str:
+    from publish_sync import _embed_payload, _hash_payload
+
+    return _hash_payload(
+        {
+            "embed": _embed_payload(submission_embed()),
+            "buttons": ["youry_payout_submit"],
+        }
+    )
+
+
 async def publish_payout_submission_welcome(
     channel: discord.TextChannel,
     bot_user: discord.ClientUser,
     *,
-    clear_old: bool = True,
-) -> None:
-    if clear_old:
+    force: bool = False,
+) -> list[int]:
+    if force:
         await delete_bot_messages(channel, bot_user)
-    await channel.send(embed=submission_embed(), view=PayoutSubmitView())
+        sent = await channel.send(embed=submission_embed(), view=PayoutSubmitView())
+        return [sent.id]
+
+    from publish_sync import sync_embed_messages
+
+    return await sync_embed_messages(
+        channel, bot_user, [submission_embed()], view=PayoutSubmitView()
+    )

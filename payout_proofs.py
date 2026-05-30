@@ -1,3 +1,4 @@
+import hashlib
 from pathlib import Path
 
 import discord
@@ -22,12 +23,20 @@ def list_proof_image_paths() -> list[Path]:
     return sorted(PROOFS_DIR.glob("*.png")) if PROOFS_DIR.is_dir() else []
 
 
+def proof_images_fingerprint() -> str:
+    parts: list[str] = []
+    for path in list_proof_image_paths():
+        stat = path.stat()
+        parts.append(f"{path.name}:{stat.st_mtime_ns}:{stat.st_size}")
+    return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
+
+
 async def publish_payout_proofs(
     channel: discord.TextChannel,
     bot_user: discord.ClientUser,
     *,
-    clear_old: bool = True,
-) -> None:
+    force: bool = False,
+) -> list[int]:
     """Post payout proof screenshots (one image per message)."""
     images = list_proof_image_paths()
     if not images:
@@ -35,8 +44,14 @@ async def publish_payout_proofs(
             f"No images in {PROOFS_DIR}. Add 01.png–12.png payout screenshots."
         )
 
-    if clear_old:
+    if force:
         await delete_bot_messages(channel, bot_user)
+        message_ids: list[int] = []
+        for image_path in images:
+            sent = await channel.send(file=discord.File(image_path))
+            message_ids.append(sent.id)
+        return message_ids
 
-    for image_path in images:
-        await channel.send(file=discord.File(image_path))
+    from publish_sync import sync_image_messages
+
+    return await sync_image_messages(channel, bot_user, images)

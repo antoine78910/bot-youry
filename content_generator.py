@@ -223,12 +223,30 @@ class ContentGeneratorView(discord.ui.View):
         await _handle_clip_request(interaction, mode="batch")
 
 
+def content_generator_panel_fingerprint() -> str:
+    from publish_sync import _embed_payload, _hash_payload
+
+    return _hash_payload(
+        {
+            "embed": _embed_payload(panel_embed()),
+            "buttons": ["youry_content_generate", "youry_content_batch"],
+        }
+    )
+
+
 async def publish_content_generator_welcome(
     channel: discord.TextChannel,
     bot_user: discord.ClientUser,
     *,
-    clear_old: bool = True,
-) -> None:
-    if clear_old:
+    force: bool = False,
+) -> list[int]:
+    if force:
         await delete_bot_messages(channel, bot_user)
-    await channel.send(embed=panel_embed(), view=ContentGeneratorView())
+        sent = await channel.send(embed=panel_embed(), view=ContentGeneratorView())
+        return [sent.id]
+
+    from publish_sync import sync_embed_messages
+
+    return await sync_embed_messages(
+        channel, bot_user, [panel_embed()], view=ContentGeneratorView()
+    )

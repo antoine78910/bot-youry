@@ -46,8 +46,11 @@ async def publish_all_channels() -> None:
             print(f"Salon {channel_id} introuvable (template: {template_name})")
             continue
         try:
-            await publish_channel(channel, template_name, bot.user)
-            print(f"Publié '{template_name}' dans #{channel.name}")
+            updated = await publish_channel(channel, template_name, bot.user)
+            if updated:
+                print(f"Updated '{template_name}' in #{channel.name}")
+            else:
+                print(f"Skipped '{template_name}' in #{channel.name} (unchanged)")
         except Exception as exc:
             print(f"Erreur salon {channel_id}: {exc}")
 
@@ -74,16 +77,23 @@ async def ping(ctx: commands.Context):
 @bot.command(name="refresh")
 async def refresh(ctx: commands.Context, template_name: str | None = None):
     """
-    Met à jour ce salon : supprime les anciens messages du bot et renvoie l'embed.
-    Usage : !refresh  ou  !refresh account_setup
+    Update this channel only if content changed (in-place edit when possible).
+    Usage: !refresh | !refresh account_setup | !refresh force
     """
     mapping = load_channel_config()
     name = template_name or mapping.get(str(ctx.channel.id))
+    force = False
+
+    if name:
+        parts = name.split()
+        force = "force" in parts
+        parts = [part for part in parts if part != "force"]
+        name = parts[0] if parts else mapping.get(str(ctx.channel.id))
 
     if not name:
         await ctx.send(
-            "Aucun template pour ce salon. Ajoute l'ID dans `channel_config.json` "
-            "ou précise : `!refresh account_setup`"
+            "No template for this channel. Add the ID in `channel_config.json` "
+            "or run: `!refresh account_setup`"
         )
         return
 
@@ -91,22 +101,45 @@ async def refresh(ctx: commands.Context, template_name: str | None = None):
 
     known = set(MESSAGE_TEMPLATES) | set(_load_special_publishers())
     if name not in known:
-        await ctx.send(f"Template `{name}` introuvable.")
+        await ctx.send(f"Template `{name}` not found.")
         return
 
-    await publish_channel(ctx.channel, name, bot.user)
+    updated = await publish_channel(ctx.channel, name, bot.user, force=force)
     try:
         await ctx.message.delete()
     except discord.HTTPException:
         pass
 
+    if not updated:
+        note = await ctx.send("No changes — message already up to date.", delete_after=4)
+        return note
+
 
 @bot.command(name="refreshall")
 @commands.has_permissions(administrator=True)
 async def refresh_all(ctx: commands.Context):
-    """Met à jour tous les salons définis dans channel_config.json (admin)."""
-    await publish_all_channels()
-    await ctx.send("Tous les salons configurés ont été mis à jour.", delete_after=5)
+    """Sync all configured channels (only changed content). Add 'force' to repost all."""
+    force = "force" in (ctx.message.content or "").lower()
+    mapping = load_channel_config()
+    updated_count = 0
+    skipped_count = 0
+
+    for channel_id, template_name in mapping.items():
+        channel = bot.get_channel(int(channel_id))
+        if channel is None:
+            continue
+        try:
+            if await publish_channel(channel, template_name, bot.user, force=force):
+                updated_count += 1
+            else:
+                skipped_count += 1
+        except Exception:
+            pass
+
+    await ctx.send(
+        f"Done — {updated_count} updated, {skipped_count} unchanged.",
+        delete_after=6,
+    )
 
 
 @bot.command(name="say")

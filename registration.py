@@ -122,12 +122,30 @@ class RegisterView(discord.ui.View):
         await interaction.response.send_modal(RegistrationModal())
 
 
+def registration_panel_fingerprint() -> str:
+    from publish_sync import _embed_payload, _hash_payload
+
+    return _hash_payload(
+        {
+            "embed": _embed_payload(welcome_embed()),
+            "buttons": ["youry_clipping_register"],
+        }
+    )
+
+
 async def publish_registration_welcome(
     channel: discord.TextChannel,
     bot_user: discord.ClientUser,
     *,
-    clear_old: bool = True,
-) -> None:
-    if clear_old:
+    force: bool = False,
+) -> list[int]:
+    if force:
         await delete_bot_messages(channel, bot_user)
-    await channel.send(embed=welcome_embed(), view=RegisterView())
+        sent = await channel.send(embed=welcome_embed(), view=RegisterView())
+        return [sent.id]
+
+    from publish_sync import sync_embed_messages
+
+    return await sync_embed_messages(
+        channel, bot_user, [welcome_embed()], view=RegisterView()
+    )
