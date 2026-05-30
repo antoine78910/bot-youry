@@ -272,7 +272,14 @@ def _validate_token(token: str) -> None:
 
 if __name__ == "__main__":
     if not TOKEN:
-        raise SystemExit("DISCORD_TOKEN manquant.")
+        raise SystemExit("DISCORD_TOKEN missing in .env")
 
     _validate_token(TOKEN)
-    bot.run(TOKEN)
+
+    try:
+        bot.run(TOKEN)
+    except discord.LoginFailure:
+        raise SystemExit(
+            "DISCORD_TOKEN rejected by Discord (401). "
+            "Run: python check_token.py — then reset the token in the Developer Portal."
+        ) from None
