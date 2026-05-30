@@ -44,11 +44,15 @@ def progress_embed(current: int, total: int) -> discord.Embed:
     )
 
 
-def progress_done_embed(total: int, thread: discord.Thread) -> discord.Embed:
+def batch_complete_embed(generated: int, requested: int, thread: discord.Thread) -> discord.Embed:
+    if requested > 1:
+        heading = f"✅ **Batch complete — {generated}/{requested} videos**"
+    else:
+        heading = f"✅ **Complete — {generated}/{requested} video**"
     return discord.Embed(
         description=(
-            f"✅ **All {total} video{'s' if total != 1 else ''} ready** — "
-            f"check {thread.mention}."
+            f"{heading}\n"
+            f"Posted in your private thread → {thread.mention}"
         ),
         color=CONTENT_COLOR,
     )
@@ -228,10 +232,7 @@ async def _generate_clips_for_user(
     if pending:
         try:
             await progress_message.edit(
-                embed=discord.Embed(
-                    description="⏳ **Uploading videos to your thread...**",
-                    color=PROGRESS_COLOR,
-                )
+                embed=batch_complete_embed(len(pending), count, thread),
             )
         except discord.HTTPException:
             pass
@@ -259,14 +260,9 @@ async def _generate_clips_for_user(
             await thread.send(f"✅ **{created}** clips are ready.")
 
     if count > 1 and 0 < created < count:
-        errors.insert(0, f"Only **{created}/{count}** clips were created.")
+        errors.insert(0, f"Only **{created}/{count}** clips were uploaded.")
 
-    if created > 0:
-        try:
-            await progress_message.edit(embed=progress_done_embed(created, thread))
-        except discord.HTTPException:
-            pass
-    elif errors:
+    if created == 0 and errors:
         try:
             await progress_message.delete()
         except discord.HTTPException:
