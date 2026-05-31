@@ -28,12 +28,14 @@ HOOK_LINES = [
 ]
 
 WIDTH = 1080
-MAX_HEIGHT = 560
+MAX_HEIGHT = 620
 H_PADDING = 40
-V_PADDING = 40
-MAX_FONT_SIZE = 78
+V_PADDING = 44
+MAX_FONT_SIZE = 80
 MIN_FONT_SIZE = 44
-TEXT_SCALE_X = 1.14
+LINE_GAP = 10
+STROKE_WIDTH = 4
+LINE_PAD = STROKE_WIDTH + 4
 STROKE_OFFSETS = (
     (-4, 0),
     (4, 0),
@@ -89,13 +91,18 @@ def _wrap_lines(text: str, font: ImageFont.FreeTypeFont | ImageFont.ImageFont) -
     return textwrap.wrap(text, width=10)
 
 
-def _line_size(line: str, font: ImageFont.FreeTypeFont | ImageFont.ImageFont) -> tuple[int, int]:
+def _line_metrics(
+    line: str,
+    font: ImageFont.FreeTypeFont | ImageFont.ImageFont,
+) -> tuple[tuple[int, int, int, int], int, int]:
     probe = Image.new("RGBA", (1, 1), (0, 0, 0, 0))
     draw = ImageDraw.Draw(probe)
-    bbox = draw.textbbox((0, 0), line, font=font)
-    width = int((bbox[2] - bbox[0]) * TEXT_SCALE_X)
-    height = bbox[3] - bbox[1]
-    return width, height
+    bbox = draw.textbbox((0, 0), line, font=font, stroke_width=0)
+    text_w = bbox[2] - bbox[0]
+    text_h = bbox[3] - bbox[1]
+    canvas_w = text_w + LINE_PAD * 2
+    canvas_h = text_h + LINE_PAD * 2
+    return bbox, canvas_w, canvas_h
 
 
 def _measure_block(
@@ -104,13 +111,12 @@ def _measure_block(
 ) -> tuple[int, int]:
     max_w = 0
     total_h = 0
-    line_gap = 8
     for index, line in enumerate(lines):
-        line_w, line_h = _line_size(line, font)
-        max_w = max(max_w, line_w)
-        total_h += line_h
+        _, canvas_w, canvas_h = _line_metrics(line, font)
+        max_w = max(max_w, canvas_w)
+        total_h += canvas_h
         if index < len(lines) - 1:
-            total_h += line_gap
+            total_h += LINE_GAP
     return max_w, total_h
 
 
@@ -127,39 +133,30 @@ def _layout(text: str) -> tuple[ImageFont.FreeTypeFont | ImageFont.ImageFont, li
 
 
 def _render_line(line: str, font: ImageFont.FreeTypeFont | ImageFont.ImageFont) -> Image.Image:
-    probe = Image.new("RGBA", (1, 1), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(probe)
-    bbox = draw.textbbox((0, 0), line, font=font)
-    tw = bbox[2] - bbox[0]
-    th = bbox[3] - bbox[1]
-    pad = 12
-
-    layer = Image.new("RGBA", (tw + pad * 2, th + pad * 2), (0, 0, 0, 0))
+    bbox, canvas_w, canvas_h = _line_metrics(line, font)
+    layer = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
     draw = ImageDraw.Draw(layer)
-    x = pad - bbox[0]
-    y = pad - bbox[1]
+    x = LINE_PAD - bbox[0]
+    y = LINE_PAD - bbox[1]
 
     for dx, dy in STROKE_OFFSETS:
         draw.text((x + dx, y + dy), line, font=font, fill=(0, 0, 0, 255))
     draw.text((x, y), line, font=font, fill=(255, 255, 255, 255))
-
-    stretched_w = max(1, int(layer.width * TEXT_SCALE_X))
-    return layer.resize((stretched_w, layer.height), Image.Resampling.LANCZOS)
+    return layer
 
 
 def _draw_label(text: str, dest: Path) -> None:
     font, lines = _layout(text)
-    _, block_h = _measure_block(lines, font)
+    line_images = [_render_line(line, font) for line in lines]
+    content_h = sum(image.height for image in line_images) + LINE_GAP * max(0, len(line_images) - 1)
 
-    img = Image.new("RGBA", (WIDTH, block_h + V_PADDING * 2), (0, 0, 0, 0))
-    line_gap = 8
+    img = Image.new("RGBA", (WIDTH, content_h + V_PADDING * 2), (0, 0, 0, 0))
     y = V_PADDING
 
-    for line in lines:
-        line_img = _render_line(line, font)
-        x = (WIDTH - line_img.width) // 2
-        img.alpha_composite(line_img, (x, y))
-        y += line_img.height + line_gap
+    for line_image in line_images:
+        x = (WIDTH - line_image.width) // 2
+        img.alpha_composite(line_image, (x, y))
+        y += line_image.height + LINE_GAP
 
     dest.parent.mkdir(parents=True, exist_ok=True)
     img.save(dest, "PNG")
