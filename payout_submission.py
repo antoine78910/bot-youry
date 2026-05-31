@@ -76,10 +76,9 @@ def _ticket_channel_name(user: discord.User) -> str:
     return f"payout-{_sanitize_username(user.name)}"
 
 
-def _can_manage_tickets(member: discord.Member) -> bool:
-    if member.guild_permissions.administrator or member.guild_permissions.manage_channels:
-        return True
-    return any(role.id in _staff_role_ids() for role in member.roles)
+def _can_use_ticket_actions(member: discord.Member, channel: discord.TextChannel) -> bool:
+    """Anyone who can see the ticket channel may mark paid or close it."""
+    return channel.permissions_for(member).view_channel
 
 
 async def _ticket_overwrites(
@@ -174,17 +173,17 @@ class PayoutTicketView(discord.ui.View):
         interaction: discord.Interaction,
         button: discord.ui.Button,
     ) -> None:
-        if not isinstance(interaction.user, discord.Member) or not _can_manage_tickets(
-            interaction.user
-        ):
-            await interaction.response.send_message(
-                "You don't have permission to manage payout tickets.",
-                ephemeral=True,
-            )
-            return
-
         channel = interaction.channel
         if not isinstance(channel, discord.TextChannel):
+            return
+
+        if not isinstance(interaction.user, discord.Member) or not _can_use_ticket_actions(
+            interaction.user, channel
+        ):
+            await interaction.response.send_message(
+                "You don't have permission to manage this ticket.",
+                ephemeral=True,
+            )
             return
 
         opener = _ticket_opener(channel)
@@ -210,17 +209,17 @@ class PayoutTicketView(discord.ui.View):
         interaction: discord.Interaction,
         button: discord.ui.Button,
     ) -> None:
-        if not isinstance(interaction.user, discord.Member) or not _can_manage_tickets(
-            interaction.user
-        ):
-            await interaction.response.send_message(
-                "You don't have permission to manage payout tickets.",
-                ephemeral=True,
-            )
-            return
-
         channel = interaction.channel
         if not isinstance(channel, discord.TextChannel):
+            return
+
+        if not isinstance(interaction.user, discord.Member) or not _can_use_ticket_actions(
+            interaction.user, channel
+        ):
+            await interaction.response.send_message(
+                "You don't have permission to manage this ticket.",
+                ephemeral=True,
+            )
             return
 
         await interaction.response.send_message("Closing ticket…", ephemeral=True)

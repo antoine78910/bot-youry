@@ -9,7 +9,8 @@ import discord
 
 from clip_assembler import ClipAssemblyError, prepare_for_discord_upload
 
-CATBOX_API = "https://catbox.moe/user/api.php"
+LITTERBOX_API = "https://litterbox.catbox.moe/resources/internals/api.php"
+EXTERNAL_LINK_TTL = "72h"
 
 
 def is_payload_too_large(exc: BaseException) -> bool:
@@ -21,13 +22,14 @@ def is_payload_too_large(exc: BaseException) -> bool:
     return False
 
 
-async def upload_to_catbox(path: Path) -> str:
-    """Upload a clip to catbox.moe and return a public HTTPS URL."""
+async def upload_to_external_host(path: Path) -> str:
+    """Upload a clip to litterbox.catbox.moe (public URL, valid 72 hours)."""
     if not path.is_file():
         raise ClipAssemblyError(f"File not found: {path}")
 
     form = aiohttp.FormData()
     form.add_field("reqtype", "fileupload")
+    form.add_field("time", EXTERNAL_LINK_TTL)
     form.add_field(
         "fileToUpload",
         path.read_bytes(),
@@ -37,7 +39,7 @@ async def upload_to_catbox(path: Path) -> str:
 
     timeout = aiohttp.ClientTimeout(total=300)
     async with aiohttp.ClientSession(timeout=timeout) as session:
-        async with session.post(CATBOX_API, data=form) as response:
+        async with session.post(LITTERBOX_API, data=form) as response:
             body = (await response.text()).strip()
 
     if not body.startswith("https://"):
@@ -55,7 +57,7 @@ async def deliver_clip_to_thread(
     recipe_text: str,
 ) -> tuple[str, str | None]:
     """
-    Try Discord upload (with compression), then emergency compression, then catbox.
+    Try Discord upload (with compression), then emergency compression, then litterbox.
 
     Returns (mode, url) where mode is \"discord\" or \"external\".
     """
@@ -84,10 +86,10 @@ async def deliver_clip_to_thread(
         if not is_payload_too_large(exc):
             raise
 
-    url = await upload_to_catbox(emergency)
+    url = await upload_to_external_host(emergency)
     await thread.send(
-        f"{member.mention} 🎬 **{clip_label}** — file too large for Discord, "
-        f"download here:\n{url}\n\n{recipe_text}",
+        f"{member.mention} 🎬 **{clip_label}** — too large for Discord, "
+        f"download here (link valid **{EXTERNAL_LINK_TTL}**):\n{url}\n\n{recipe_text}",
         suppress_embeds=True,
     )
     return "external", url

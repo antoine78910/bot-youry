@@ -13,7 +13,7 @@ from embeds import get_template
 
 STATE_PATH = Path(__file__).parent / "publish_state.json"
 # Bump when publish/skip logic changes so all channels resync once.
-SYNC_VERSION = 3
+SYNC_VERSION = 4
 
 
 def _hash_payload(payload: object) -> str:
@@ -124,7 +124,8 @@ async def count_bot_panel_messages(
         if message.author.id != bot_user.id:
             continue
         if is_proofs:
-            if message.attachments and not message.embeds:
+            # Image uploads keep Discord's attachment preview embed — do not require embeds absent.
+            if message.attachments:
                 count += 1
         elif message.embeds or message.components:
             count += 1
@@ -260,6 +261,9 @@ async def sync_image_messages(
 
     message_ids: list[int] = []
     for path in image_paths:
-        sent = await channel.send(file=discord.File(path))
+        sent = await channel.send(
+            file=discord.File(path),
+            suppress_embeds=False,
+        )
         message_ids.append(sent.id)
     return message_ids

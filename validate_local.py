@@ -23,7 +23,8 @@ def main() -> int:
                 if not images:
                     errors.append(f"{label}: no images in assets/payout_proofs/")
                 else:
-                    print(f"OK   {label} ({len(images)} images)")
+                    order = " -> ".join(p.name for p in images)
+                    print(f"OK   {label} ({len(images)} images, order: {order})")
             elif template_name == "registration_welcome":
                 from registration import registration_panel_fingerprint, welcome_embed
 
