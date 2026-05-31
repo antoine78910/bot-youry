@@ -54,7 +54,6 @@ async def deliver_clip_to_thread(
     path: Path,
     *,
     clip_label: str,
-    recipe_text: str,
 ) -> tuple[str, str | None]:
     """
     Try Discord upload (with compression), then emergency compression, then litterbox.
@@ -68,7 +67,6 @@ async def deliver_clip_to_thread(
             f"{member.mention} 🎬",
             file=discord.File(compressed, filename=compressed.name),
         )
-        await thread.send(f"**{clip_label}** — {recipe_text}", suppress_embeds=True)
         return "discord", None
     except discord.HTTPException as exc:
         if not is_payload_too_large(exc):
@@ -80,7 +78,6 @@ async def deliver_clip_to_thread(
             f"{member.mention} 🎬",
             file=discord.File(emergency, filename=emergency.name),
         )
-        await thread.send(f"**{clip_label}** — {recipe_text}", suppress_embeds=True)
         return "discord", None
     except discord.HTTPException as exc:
         if not is_payload_too_large(exc):
@@ -89,7 +86,7 @@ async def deliver_clip_to_thread(
     url = await upload_to_external_host(emergency)
     await thread.send(
         f"{member.mention} 🎬 **{clip_label}** — too large for Discord, "
-        f"download here (link valid **{EXTERNAL_LINK_TTL}**):\n{url}\n\n{recipe_text}",
+        f"download here (link valid **{EXTERNAL_LINK_TTL}**):\n{url}",
         suppress_embeds=True,
     )
     return "external", url

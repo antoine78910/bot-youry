@@ -22,11 +22,11 @@ HOOK_LINES = [
 ]
 
 WIDTH = 1080
-MAX_HEIGHT = 420
-H_PADDING = 48
-V_PADDING = 36
-MAX_FONT_SIZE = 56
-MIN_FONT_SIZE = 34
+MAX_HEIGHT = 560
+H_PADDING = 40
+V_PADDING = 40
+MAX_FONT_SIZE = 78
+MIN_FONT_SIZE = 44
 
 
 def _slug(text: str) -> str:
@@ -105,8 +105,17 @@ def _draw_label(text: str, dest: Path) -> None:
         th = bbox[3] - bbox[1]
         x = (WIDTH - tw) // 2
 
-        for dx, dy in ((-2, 0), (2, 0), (0, -2), (0, 2)):
-            draw.text((x + dx, y + dy), line, font=font, fill=(0, 0, 0, 220))
+        for dx, dy in (
+            (-3, 0),
+            (3, 0),
+            (0, -3),
+            (0, 3),
+            (-2, -2),
+            (2, -2),
+            (-2, 2),
+            (2, 2),
+        ):
+            draw.text((x + dx, y + dy), line, font=font, fill=(0, 0, 0, 235))
         draw.text((x, y), line, font=font, fill=(255, 255, 255, 255))
         y += th + line_gap
 

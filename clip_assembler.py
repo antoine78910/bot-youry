@@ -234,7 +234,7 @@ def _random_recipe(rng: random.Random) -> ClipRecipe:
         brightness=rng.uniform(-0.04, 0.04),
         contrast=rng.uniform(0.94, 1.06),
         end_trim_sec=rng.uniform(0.08, 0.25),
-        text_position="top",
+        text_position="mid",
     )
 
 
@@ -436,11 +436,12 @@ def _overlay_xy(position: str, margin: int = 64) -> tuple[str, str]:
     mapping = {
         "top": (f"(main_w-overlay_w)/2", str(margin)),
         "upper": (f"(main_w-overlay_w)/2", f"main_h*0.18"),
+        "mid": (f"(main_w-overlay_w)/2", f"(main_h-overlay_h)*0.38"),
         "center": ("(main_w-overlay_w)/2", "(main_h-overlay_h)/2"),
         "lower": (f"(main_w-overlay_w)/2", f"main_h*0.62"),
         "bottom": (f"(main_w-overlay_w)/2", f"main_h-overlay_h-{margin}"),
     }
-    return mapping.get(position, mapping["top"])
+    return mapping.get(position, mapping["mid"])
 
 
 def assemble_clip(

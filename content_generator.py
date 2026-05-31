@@ -66,7 +66,7 @@ def panel_embed() -> discord.Embed:
             "**Generate Content** — 1 video\n"
             "**Batch Generate** — up to 5 videos (different hooks, body, music & effects)\n\n"
             "Each export gets random color, scale, rotation & end cut. "
-            "A random hook line stays top-center for the full hook segment."
+            "A random hook line stays mid-screen for the full hook segment."
         ),
         color=CONTENT_COLOR,
     )
@@ -195,7 +195,6 @@ async def _generate_clips_for_user(
         assemble_clip,
         assets_status,
         cleanup_clip_artifacts,
-        recipe_summary,
     )
     from clip_delivery import deliver_clip_to_thread
 
@@ -251,7 +250,6 @@ async def _generate_clips_for_user(
                     member,
                     output_path,
                     clip_label=clip_label,
-                    recipe_text=recipe_summary(recipe),
                 )
                 created += 1
                 if mode == "external" and url:
