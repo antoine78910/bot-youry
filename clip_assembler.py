@@ -63,9 +63,6 @@ OUTPUT_FPS = 30
 MUSIC_VOLUME = 0.42
 ENCODE_PRESET = "veryfast"
 ENCODE_CRF = "22"
-TEXT_OVERLAY_SEC = 2.5
-
-
 @dataclass
 class ClipRecipe:
     hook: Path
@@ -180,20 +177,29 @@ def _pick_text_hook(rng: random.Random) -> tuple[Path | None, str | None]:
     if not hooks_text_dir().is_dir():
         return None, None
 
-    categories = [
-        d
-        for d in hooks_text_dir().iterdir()
-        if d.is_dir() and _list_files(d, TEXT_EXT | VIDEO_EXT)
-    ]
-    if categories:
-        category = rng.choice(categories)
-        chosen = rng.choice(_list_files(category, TEXT_EXT | VIDEO_EXT))
-        return chosen, category.name
+    choices: list[tuple[Path, str]] = []
+    for item in hooks_text_dir().iterdir():
+        if item.is_dir():
+            for path in _list_files(item, TEXT_EXT | VIDEO_EXT):
+                choices.append((path, item.name))
+        elif item.is_file() and item.suffix.lower() in TEXT_EXT | VIDEO_EXT:
+            choices.append((item, "default"))
 
-    root_files = _list_files(hooks_text_dir(), TEXT_EXT | VIDEO_EXT)
-    if root_files:
-        return rng.choice(root_files), "default"
-    return None, None
+    if not choices:
+        return None, None
+    return rng.choice(choices)
+
+
+def _list_text_hooks() -> list[Path]:
+    if not hooks_text_dir().is_dir():
+        return []
+    paths: list[Path] = []
+    for item in hooks_text_dir().iterdir():
+        if item.is_dir():
+            paths.extend(_list_files(item, TEXT_EXT | VIDEO_EXT))
+        elif item.is_file() and item.suffix.lower() in TEXT_EXT | VIDEO_EXT:
+            paths.append(item)
+    return paths
 
 
 def _random_recipe(rng: random.Random) -> ClipRecipe:
@@ -491,7 +497,9 @@ def _render_clip(recipe: ClipRecipe, dest: Path) -> None:
     scale_crop = _scale_crop_filter()
     rot_rad = recipe.rotation_deg * 3.14159265 / 180.0
     ox, oy = _overlay_xy(recipe.text_position)
-    enable = f"lt(t,{TEXT_OVERLAY_SEC})"
+    # Keep hook text visible for the full hook segment only (not on the body).
+    text_overlay_sec = max(0.1, hook_dur)
+    enable = f"lt(t,{text_overlay_sec:.3f})"
 
     video_var = (
         f"eq=saturation={recipe.saturation}:brightness={recipe.brightness}:"
@@ -634,13 +642,7 @@ def assets_status() -> dict:
         "hooks": len(_list_usable_files(hooks_dir(), VIDEO_EXT)),
         "bodies": len(_list_usable_files(body_dir(), VIDEO_EXT)),
         "music": len(_list_usable_files(music_dir(), AUDIO_EXT)),
-        "text_hooks": sum(
-            len(_list_files(hooks_text_dir() / d, TEXT_EXT | VIDEO_EXT))
-            for d in hooks_text_dir().iterdir()
-            if d.is_dir()
-        )
-        if hooks_text_dir().is_dir()
-        else 0,
+        "text_hooks": len(_list_text_hooks()),
     }
 
 

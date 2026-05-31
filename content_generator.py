@@ -65,7 +65,8 @@ def panel_embed() -> discord.Embed:
             "Click a button below to generate a unique clip.\n\n"
             "**Generate Content** — 1 video\n"
             "**Batch Generate** — up to 5 videos (different hooks, body, music & effects)\n\n"
-            "Each export gets random color, scale, rotation & end cut. Text hook stays top-center."
+            "Each export gets random color, scale, rotation & end cut. "
+            "A random hook line stays top-center for the full hook segment."
         ),
         color=CONTENT_COLOR,
     )

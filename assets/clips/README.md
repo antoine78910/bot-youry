@@ -10,11 +10,9 @@ assets/clips/
 │   ├── hook_01.mp4
 │   └── hook_02.mp4
 ├── hooks_text/         ← Text-hook overlays (PNG with transparency, or short MP4)
-│   ├── ai/             ← “Comment AI…” style
-│   │   ├── text_01.png
-│   │   └── text_02.png
-│   ├── ugc/
-│   └── workflow/
+│   └── lines/          ← One PNG per hook line (random pick each export)
+│       ├── the_art_of_youry.png
+│       └── ai_on_steroids.png
 ├── body/               ← Main talking-head / demo footage (your core clip)
 │   ├── body_01.mp4
 │   └── body_02.mp4
@@ -31,18 +29,18 @@ assets/clips/
 | `hooks/`   | `.mp4`, `.mov` | Vertical 9:16 preferred (1080×1920). 3–8 seconds. |
 | `body/`    | `.mp4`, `.mov` | Main content; can be 30–90s. |
 | `music/`   | `.mp3`, `.m4a`, `.wav` | Mixed at ~42% volume under your body audio. Hook segments are always silent. |
-| `hooks_text/` | `.png` (transparent) or `.mp4` | Shown on the **first ~2.5s**; position randomized. |
+| `hooks_text/` | `.png` (transparent) or `.mp4` | Shown **top-center for the full hook segment** only. |
 
 ## How assembly works
 
 1. Random **visual hook** + random **body** + random **music**
-2. Random **text hook** from `hooks_text/ai`, `ugc`, or `workflow` (or root of `hooks_text/`)
+2. Random **text hook** from any PNG in `hooks_text/` (currently `hooks_text/lines/`)
 3. Variations applied on the final video:
    - Color: saturation / brightness / contrast jitter
    - Scale: 100% → up to 105%, then center-crop to 1080×1920
    - Rotation: ±0.5°
    - **Mini cut:** trims 0.08–0.25s off the end
-   - Text overlay **top-center** for the first ~2.5s
+   - Text overlay **top-center** for the **entire hook** (hidden when the body starts)
 
 ## Requirements
 
