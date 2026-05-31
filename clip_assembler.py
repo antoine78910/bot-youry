@@ -436,7 +436,7 @@ def _overlay_xy(position: str, margin: int = 64) -> tuple[str, str]:
     mapping = {
         "top": (f"(main_w-overlay_w)/2", str(margin)),
         "upper": (f"(main_w-overlay_w)/2", f"main_h*0.18"),
-        "mid": (f"(main_w-overlay_w)/2", f"(main_h-overlay_h)*0.38"),
+        "mid": (f"(main_w-overlay_w)/2", f"(main_h-overlay_h)*0.24"),
         "center": ("(main_w-overlay_w)/2", "(main_h-overlay_h)/2"),
         "lower": (f"(main_w-overlay_w)/2", f"main_h*0.62"),
         "bottom": (f"(main_w-overlay_w)/2", f"main_h-overlay_h-{margin}"),

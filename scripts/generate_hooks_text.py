@@ -35,7 +35,18 @@ def _slug(text: str) -> str:
 
 
 def _font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
-    for name in ("arialbd.ttf", "Arial Bold.ttf", "segoeuib.ttf", "arial.ttf"):
+    """Prefer the OS system UI font (Segoe UI on Windows)."""
+    candidates = [
+        Path("C:/Windows/Fonts/segoeui.ttf"),
+        Path("/System/Library/Fonts/Supplemental/Arial.ttf"),
+        Path("/System/Library/Fonts/Helvetica.ttc"),
+        Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+    ]
+    for path in candidates:
+        if path.is_file():
+            return ImageFont.truetype(str(path), size)
+
+    for name in ("segoeui.ttf", "Segoe UI.ttf", "arial.ttf"):
         try:
             return ImageFont.truetype(name, size)
         except OSError:
@@ -106,16 +117,20 @@ def _draw_label(text: str, dest: Path) -> None:
         x = (WIDTH - tw) // 2
 
         for dx, dy in (
-            (-3, 0),
-            (3, 0),
-            (0, -3),
-            (0, 3),
+            (-4, 0),
+            (4, 0),
+            (0, -4),
+            (0, 4),
+            (-3, -3),
+            (3, -3),
+            (-3, 3),
+            (3, 3),
             (-2, -2),
             (2, -2),
             (-2, 2),
             (2, 2),
         ):
-            draw.text((x + dx, y + dy), line, font=font, fill=(0, 0, 0, 235))
+            draw.text((x + dx, y + dy), line, font=font, fill=(0, 0, 0, 255))
         draw.text((x, y), line, font=font, fill=(255, 255, 255, 255))
         y += th + line_gap
 

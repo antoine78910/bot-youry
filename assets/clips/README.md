@@ -29,7 +29,7 @@ assets/clips/
 | `hooks/`   | `.mp4`, `.mov` | Vertical 9:16 preferred (1080×1920). 3–8 seconds. |
 | `body/`    | `.mp4`, `.mov` | Main content; can be 30–90s. |
 | `music/`   | `.mp3`, `.m4a`, `.wav` | Mixed at ~42% volume under your body audio. Hook segments are always silent. |
-| `hooks_text/` | `.png` (transparent) or `.mp4` | Shown **mid-screen for the full hook segment** only. |
+| `hooks_text/` | `.png` (transparent) or `.mp4` | Shown **upper-mid screen** for the full hook segment only. |
 
 ## How assembly works
 
@@ -40,7 +40,7 @@ assets/clips/
    - Scale: 100% → up to 105%, then center-crop to 1080×1920
    - Rotation: ±0.5°
    - **Mini cut:** trims 0.08–0.25s off the end
-   - Text overlay **mid-screen** for the **entire hook** (hidden when the body starts)
+   - Text overlay **upper-mid screen** for the **entire hook** (hidden when the body starts)
 
 ## Requirements
 
