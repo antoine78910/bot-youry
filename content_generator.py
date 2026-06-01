@@ -186,6 +186,7 @@ async def _generate_clips_for_user(
     member: discord.Member,
     thread: discord.Thread,
     *,
+    mode: str,
     count: int,
     progress_message: discord.WebhookMessage,
 ) -> tuple[int, list[str], list[str]]:
@@ -234,6 +235,7 @@ async def _generate_clips_for_user(
 
     created = 0
     external_links: list[str] = []
+    delivered_outputs: list = []
     if pending:
         try:
             await progress_message.edit(
@@ -242,17 +244,27 @@ async def _generate_clips_for_user(
         except discord.HTTPException:
             pass
 
+        from activity_logs import ClipOutput
+
         for index, (output_path, recipe) in enumerate(pending, start=1):
             clip_label = f"Clip {index}/{len(pending)}"
             try:
-                mode, url = await deliver_clip_to_thread(
+                delivery_mode, url = await deliver_clip_to_thread(
                     thread,
                     member,
                     output_path,
                     clip_label=clip_label,
                 )
                 created += 1
-                if mode == "external" and url:
+                delivered_outputs.append(
+                    ClipOutput(
+                        label=clip_label,
+                        recipe=recipe,
+                        delivery_mode=delivery_mode,
+                        url=url,
+                    )
+                )
+                if delivery_mode == "external" and url:
                     external_links.append(f"**{clip_label}:** {url}")
             except ClipAssemblyError as exc:
                 errors.append(f"{clip_label} failed: {exc}")
@@ -306,6 +318,22 @@ async def _generate_clips_for_user(
             + "\n".join(external_links),
             ephemeral=True,
         )
+
+    if created > 0 and delivered_outputs and interaction.client:
+        from activity_logs import log_content_generation
+
+        try:
+            await log_content_generation(
+                interaction.client,
+                member,
+                mode=mode,
+                thread=thread,
+                outputs=delivered_outputs,
+                created=created,
+                requested=count,
+            )
+        except Exception as exc:
+            print(f"Content log failed for {member.id}: {exc}")
 
     return created, errors, external_links
 
@@ -371,6 +399,7 @@ async def _handle_clip_request(
         interaction.channel,
         interaction.user,
         thread,
+        mode=mode,
         count=count,
         progress_message=progress_message,
     )

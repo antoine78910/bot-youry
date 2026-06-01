@@ -6,3 +6,7 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+scripts/whop_broadcast_state.json
+scripts/whop_members_export.csv
+scripts/whop_members_export.json
+scripts/whop_emails_all.csv

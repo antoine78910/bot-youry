@@ -29,6 +29,7 @@ AUTO_PUBLISH = _clean_env(os.getenv("AUTO_PUBLISH_ON_START", "false")).lower() i
 
 intents = discord.Intents.default()
 intents.message_content = True
+intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
@@ -67,6 +68,16 @@ async def on_ready():
 
     if AUTO_PUBLISH:
         await publish_all_channels()
+
+
+@bot.event
+async def on_member_join(member: discord.Member):
+    from activity_logs import log_member_join
+
+    try:
+        await log_member_join(bot, member)
+    except Exception as exc:
+        print(f"Join log failed for {member.id}: {exc}")
 
 
 @bot.command(name="ping")
